@@ -1,0 +1,11 @@
+*.ctxt
+package.bluej
+
+*.class
+
+Thumbs.db
+.DS_Store
+
+.idea/
+*.iml
+.vscode/
