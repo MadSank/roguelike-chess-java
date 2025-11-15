@@ -1,7 +1,0 @@
-#BlueJ class context
-comment0.target=Queen
-comment1.params=white
-comment1.target=Queen(boolean)
-comment2.params=row\ col\ engine
-comment2.target=java.util.List\ generateLegalMoves(int,\ int,\ ChessEngine)
-numComments=3
