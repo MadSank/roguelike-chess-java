@@ -1,0 +1,7 @@
+#BlueJ class context
+comment0.target=Knight
+comment1.params=white
+comment1.target=Knight(boolean)
+comment2.params=row\ col\ engine
+comment2.target=java.util.List\ generateLegalMoves(int,\ int,\ ChessEngine)
+numComments=3

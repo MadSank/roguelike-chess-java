@@ -1,0 +1,8 @@
+#BlueJ class context
+comment0.target=Rook
+comment0.text=\r\n\r\nRook\ -\ implements\ straight-line\ sliding\ moves.\r\n
+comment1.params=white
+comment1.target=Rook(boolean)
+comment2.params=row\ col\ engine
+comment2.target=java.util.List\ generateLegalMoves(int,\ int,\ ChessEngine)
+numComments=3

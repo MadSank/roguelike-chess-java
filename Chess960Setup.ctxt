@@ -1,0 +1,19 @@
+#BlueJ class context
+comment0.target=Chess960Setup
+comment1.params=
+comment1.target=Chess960Setup()
+comment2.params=seed
+comment2.target=Chess960Setup(long)
+comment3.params=state\ purchasedPieces
+comment3.target=void\ setupCustomChess960Board(GameState,\ java.util.List)
+comment4.params=state\ pieces\ white
+comment4.target=void\ setupSideWithPawnProtection(GameState,\ java.util.List,\ boolean)
+comment5.params=state
+comment5.target=void\ setupBlackSide(GameState)
+comment6.params=whitePiece
+comment6.target=Piece\ createMirroredPiece(Piece)
+comment7.params=state
+comment7.target=java.lang.String\ getPositionDescription(GameState)
+comment8.params=state
+comment8.target=int\ countPiecesOnBoard(GameState)
+numComments=9

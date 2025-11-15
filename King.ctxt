@@ -1,0 +1,19 @@
+#BlueJ class context
+comment0.target=King
+comment1.params=white
+comment1.target=King(boolean)
+comment2.params=
+comment2.target=boolean\ hasMoved()
+comment3.params=moved
+comment3.target=void\ setHasMoved(boolean)
+comment4.params=row\ col\ engine
+comment4.target=java.util.List\ generateLegalMoves(int,\ int,\ ChessEngine)
+comment5.params=moves\ row\ col\ state\ engine
+comment5.target=void\ addCastlingMoves(java.util.List,\ int,\ int,\ GameState,\ ChessEngine)
+comment6.params=state\ row\ engine
+comment6.target=boolean\ canCastleKingside(GameState,\ int,\ ChessEngine)
+comment7.params=state\ row\ engine
+comment7.target=boolean\ canCastleQueenside(GameState,\ int,\ ChessEngine)
+comment8.params=
+comment8.target=King\ clone()
+numComments=9

@@ -1,0 +1,27 @@
+#BlueJ class context
+comment0.target=MenuSwing
+comment1.params=app
+comment1.target=MenuSwing(RoguelikeChessAppSwing)
+comment10.params=
+comment10.target=void\ showHighScores()
+comment11.params=
+comment11.target=void\ confirmExit()
+comment12.params=
+comment12.target=void\ showMenu()
+comment2.params=
+comment2.target=void\ initializeUI()
+comment3.params=
+comment3.target=javax.swing.JPanel\ createMainMenu()
+comment4.params=
+comment4.target=javax.swing.JPanel\ createSettingsMenu()
+comment5.params=
+comment5.target=javax.swing.JPanel\ createCreditsMenu()
+comment6.params=text
+comment6.target=javax.swing.JButton\ createMenuButton(java.lang.String)
+comment7.params=e
+comment7.target=void\ mouseEntered(java.awt.event.MouseEvent)
+comment8.params=e
+comment8.target=void\ mouseExited(java.awt.event.MouseEvent)
+comment9.params=
+comment9.target=void\ startNewGame()
+numComments=13

@@ -1,0 +1,25 @@
+#BlueJ class context
+comment0.target=BoardViewSwing
+comment1.params=app\ engine
+comment1.target=BoardViewSwing(RoguelikeChessAppSwing,\ ChessEngine)
+comment10.params=g\ piece\ row\ col
+comment10.target=void\ drawPiece(java.awt.Graphics,\ Piece,\ int,\ int)
+comment11.params=g
+comment11.target=void\ drawHighlights(java.awt.Graphics)
+comment2.params=
+comment2.target=void\ setupMouseHandlers()
+comment3.params=e
+comment3.target=void\ mouseClicked(java.awt.event.MouseEvent)
+comment4.params=row\ col
+comment4.target=void\ handleBoardClick(int,\ int)
+comment5.params=
+comment5.target=void\ clearSelection()
+comment6.params=
+comment6.target=void\ refresh()
+comment7.params=g
+comment7.target=void\ paintComponent(java.awt.Graphics)
+comment8.params=g
+comment8.target=void\ drawBoard(java.awt.Graphics)
+comment9.params=g
+comment9.target=void\ drawPieces(java.awt.Graphics)
+numComments=12
