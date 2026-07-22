@@ -1,4 +1,4 @@
-package ashes;
+ 
 
 import java.util.*;
 
@@ -45,7 +45,7 @@ public class Chess960Setup {
         state.movesToEnd = 0;
         state.capturesMade = 0;
         state.specialMovesUsed = 0;
-        state.piecesLeftStanding = countPiecesOnBoard(state);
+        state.piecesLeftStanding = Utils.countPiecesOnBoard(state);
         state.enPassantTarget = null;
 
         state.whiteKingMoved = false;
@@ -220,13 +220,5 @@ public class Chess960Setup {
             whitePieces, blackPieces, whitePawns, whiteRooksQueens);
     }
 
-    private int countPiecesOnBoard(GameState state) {
-        int count = 0;
-        for (int r = 0; r < 8; r++) {
-            for (int c = 0; c < 8; c++) {
-                if (state.board[r][c] != null) count++;
-            }
-        }
-        return count;
-    }
+
 }

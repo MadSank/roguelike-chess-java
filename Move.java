@@ -1,4 +1,4 @@
-package ashes;
+
 
 import java.io.Serializable;
 import java.util.Objects;
@@ -17,6 +17,11 @@ public class Move implements Serializable {
     public boolean isPromotion;
     public String promotionType;
 
+    // ─── Sniper Bishops extension ────────────────────────────────
+    public boolean isSniperShot;
+    public int sniperTargetRow = -1;
+    public int sniperTargetCol = -1;
+
     public Move(int fromRow, int fromCol, int toRow, int toCol) {
         this.fromRow = fromRow;
         this.fromCol = fromCol;
@@ -27,6 +32,7 @@ public class Move implements Serializable {
         this.isEnPassant = false;
         this.isPromotion = false;
         this.promotionType = null;
+        this.isSniperShot = false;
     }
 
     public static Move promotion(int fromRow, int fromCol, int toRow, int toCol, String type) {
@@ -43,6 +49,9 @@ public class Move implements Serializable {
         m.isEnPassant = isEnPassant;
         m.isPromotion = isPromotion;
         m.promotionType = promotionType;
+        m.isSniperShot = isSniperShot;
+        m.sniperTargetRow = sniperTargetRow;
+        m.sniperTargetCol = sniperTargetCol;
         return m;
     }
 
@@ -61,9 +70,16 @@ public class Move implements Serializable {
         this.isEnPassant = other.isEnPassant;
         this.isPromotion = other.isPromotion;
         this.promotionType = other.promotionType;
+        this.isSniperShot = other.isSniperShot;
+        this.sniperTargetRow = other.sniperTargetRow;
+        this.sniperTargetCol = other.sniperTargetCol;
     }
 
     public String toUCI() {
+        if (isSniperShot) {
+            return "snipe:" + squareName(fromRow, fromCol) + "x" +
+                   squareName(sniperTargetRow, sniperTargetCol);
+        }
         String base = squareName(fromRow, fromCol) + squareName(toRow, toCol);
         if (isPromotion && promotionType != null) {
             base += promotionType.toLowerCase();
@@ -100,6 +116,7 @@ public class Move implements Serializable {
         if (isCapture) sb.append("x");
         if (isCastle) sb.append(" (castle)");
         if (isEnPassant) sb.append(" (ep)");
+        if (isSniperShot) sb.append(" (snipe)");
         return sb.toString();
     }
 
@@ -112,11 +129,15 @@ public class Move implements Serializable {
         fromCol == other.fromCol &&
         toRow == other.toRow &&
         toCol == other.toCol &&
+        isSniperShot == other.isSniperShot &&
+        sniperTargetRow == other.sniperTargetRow &&
+        sniperTargetCol == other.sniperTargetCol &&
         Objects.equals(promotionType, other.promotionType);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(fromRow, fromCol, toRow, toCol, promotionType);
+        return Objects.hash(fromRow, fromCol, toRow, toCol, promotionType,
+                           isSniperShot, sniperTargetRow, sniperTargetCol);
     }
 }

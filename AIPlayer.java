@@ -1,4 +1,4 @@
-package ashes;
+
 
 import java.util.*;
 
@@ -80,6 +80,23 @@ public class AIPlayer {
                 Piece piece = state.board[r][c];
                 if (piece != null) {
                     int value = getPieceValue(piece);
+
+                    // Card-aware: stunned pieces are worth less
+                    if (state.stunnedPieces != null && state.stunnedPieces.containsKey(r * 8 + c)) {
+                        value = value * 60 / 100; // stunned = 60% value
+                    }
+
+                    // Card-aware: pieces near minefields lose value
+                    if (state.minefieldSquares != null && !state.minefieldSquares.isEmpty()) {
+                        for (int mineIdx : state.minefieldSquares) {
+                            int mr = mineIdx / 8, mc = mineIdx % 8;
+                            if (Math.abs(r - mr) <= 1 && Math.abs(c - mc) <= 1) {
+                                value = value * 85 / 100; // nearby mine penalty
+                                break;
+                            }
+                        }
+                    }
+
                     score += piece.isWhite() ? -value : value;
                 }
             }
@@ -90,7 +107,30 @@ public class AIPlayer {
         score += (blackMobility - whiteMobility) * 10;
 
         score += evaluateCenterControl(state);
+
+        // Card-aware: phalanx bonus for adjacent pawns
+        if (state.cardManager != null && state.cardManager.hasCard(CardPawnPhalanx.class)) {
+            score += evaluatePhalanxBonus(state);
+        }
+
         return score;
+    }
+
+    private int evaluatePhalanxBonus(GameState state) {
+        int bonus = 0;
+        for (int r = 0; r < 8; r++) {
+            for (int c = 0; c < 7; c++) {
+                Piece p1 = state.board[r][c];
+                Piece p2 = state.board[r][c + 1];
+                if (p1 instanceof Pawn && p2 instanceof Pawn) {
+                    if (p1.isWhite() == p2.isWhite()) {
+                        // Phalanx pair — bonus for the side that owns them
+                        bonus += p1.isWhite() ? -25 : 25;
+                    }
+                }
+            }
+        }
+        return bonus;
     }
 
     private int getPieceValue(Piece piece) {
@@ -128,6 +168,13 @@ public class AIPlayer {
                 Piece piece = state.board[r][c];
                 if (piece != null && piece.isWhite() == forWhite) {
                     List<Move> pieceMoves = piece.generateLegalMoves(r, c, tempEngine);
+
+                    // Card hook: apply move modifiers through the temp engine
+                    if (state.cardManager != null) {
+                        pieceMoves = state.cardManager.applyMoveModifiers(
+                            pieceMoves, piece, r, c, tempEngine, state);
+                    }
+
                     for (Move move : pieceMoves) {
                         if (tempEngine.isMoveLegal(move)) {
                             moves.add(move);
@@ -140,15 +187,7 @@ public class AIPlayer {
     }
 
     private GameState simulateMove(GameState state, Move move) {
-        GameState newState = state.copy();
-        Piece piece = newState.board[move.fromRow][move.fromCol];
-        Piece captured = newState.board[move.toRow][move.toCol];
-        newState.board[move.toRow][move.toCol] = piece;
-        newState.board[move.fromRow][move.fromCol] = null;
-        if (captured != null) {
-            move.isCapture = true;
-        }
-        newState.whiteToMove = !newState.whiteToMove;
-        return newState;
+        ChessEngine tempEngine = new ChessEngine(state);
+        return tempEngine.simulateMove(state, move);
     }
 }

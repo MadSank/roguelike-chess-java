@@ -1,4 +1,4 @@
-package ashes;
+
 
 import java.io.Serializable;
 import java.util.*;
@@ -33,6 +33,24 @@ public class GameState implements Serializable {
     public boolean blackKingMoved;
     public boolean blackKingsideRookMoved;
     public boolean blackQueensideRookMoved;
+
+    // ─── CARD SYSTEM STATE ──────────────────────────────────────
+    public CardManager cardManager;
+
+    /** Heavy Armor: stunned pieces. Key = row*8+col, Value = turns remaining. */
+    public Map<Integer, Integer> stunnedPieces;
+
+    /** Minefield: trapped square indices (row*8+col). */
+    public Set<Integer> minefieldSquares;
+
+    /** Necromancer's Gambit: one-time trigger flag. */
+    public boolean necromancerUsed;
+
+    /** Vaulting Majors: which piece can vault (row*8+col), -1 if none. */
+    public int vaultingPieceSquare = -1;
+
+    /** Total move counter for cards like Chrono Shift. */
+    public int totalMoveCount;
     
     public GameState() {
         board = new Piece[8][8];
@@ -58,6 +76,14 @@ public class GameState implements Serializable {
         blackKingMoved = false;
         blackKingsideRookMoved = false;
         blackQueensideRookMoved = false;
+
+        // Card system
+        cardManager = new CardManager();
+        stunnedPieces = new HashMap<>();
+        minefieldSquares = new HashSet<>();
+        necromancerUsed = false;
+        vaultingPieceSquare = -1;
+        totalMoveCount = 0;
     }
     
     public void setGameState(GameState other) {
@@ -93,6 +119,14 @@ public class GameState implements Serializable {
         this.blackQueensideRookMoved = other.blackQueensideRookMoved;
         
         this.moveHistory = new ArrayList<>(other.moveHistory);
+
+        // Card system
+        this.cardManager = (other.cardManager != null) ? other.cardManager.copy() : new CardManager();
+        this.stunnedPieces = new HashMap<>(other.stunnedPieces != null ? other.stunnedPieces : Collections.emptyMap());
+        this.minefieldSquares = new HashSet<>(other.minefieldSquares != null ? other.minefieldSquares : Collections.emptySet());
+        this.necromancerUsed = other.necromancerUsed;
+        this.vaultingPieceSquare = other.vaultingPieceSquare;
+        this.totalMoveCount = other.totalMoveCount;
     }
 
     public GameState copy() {
@@ -127,6 +161,15 @@ public class GameState implements Serializable {
         copy.blackQueensideRookMoved = blackQueensideRookMoved;
         
         copy.moveHistory = new ArrayList<>(moveHistory);
+
+        // Card system deep copy
+        copy.cardManager = (cardManager != null) ? cardManager.copy() : new CardManager();
+        copy.stunnedPieces = new HashMap<>(stunnedPieces != null ? stunnedPieces : Collections.emptyMap());
+        copy.minefieldSquares = new HashSet<>(minefieldSquares != null ? minefieldSquares : Collections.emptySet());
+        copy.necromancerUsed = necromancerUsed;
+        copy.vaultingPieceSquare = vaultingPieceSquare;
+        copy.totalMoveCount = totalMoveCount;
+
         return copy;
     }
 

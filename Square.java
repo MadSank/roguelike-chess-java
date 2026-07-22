@@ -1,4 +1,4 @@
-package ashes;
+ 
 
 import java.io.Serializable;
 import java.util.Objects;

@@ -1,4 +1,4 @@
-package ashes;
+
 
 import java.util.*;
 
@@ -37,13 +37,35 @@ public class ChessEngine {
         }
         HistoryEntry entry = makeHistoryEntry(move);
         history.push(entry);
+
+        // Resolve capture with card hooks
+        Piece captured = null;
+        if (move.isSniperShot) {
+            captured = state.board[move.sniperTargetRow][move.sniperTargetCol];
+        } else if (move.isEnPassant) {
+            captured = state.board[move.fromRow][move.toCol];
+        } else {
+            captured = state.board[move.toRow][move.toCol];
+        }
+
         performMoveOnState(state, move);
 
-        updateCastlingRights(move);
+        // Card: resolve capture side-effects (Golden Edge, Glass Cannons, Necromancer, Soul Harvest)
+        if (move.isCapture && captured != null && state.cardManager != null) {
+            Piece capturer = state.board[move.toRow][move.toCol];
+            state.cardManager.resolveCapture(state, move, captured, capturer);
+        }
 
+        // Card: per-move triggers (Minefield, Chrono Shift, Heavy Armor stun decrement, Vaulting track)
+        if (state.cardManager != null) {
+            state.cardManager.onMovePerformed(state, move);
+        }
+
+        updateCastlingRights(move);
         updateEnPassantTarget(move);
 
         state.movesToEnd++;
+        state.totalMoveCount++;
         state.moveHistory.add(move.toUCI());
 
         if (move.isCastle || move.isEnPassant || move.isPromotion) {
@@ -58,6 +80,11 @@ public class ChessEngine {
 
     private void updateCastlingRights(Move move) {
         Piece piece = state.board[move.toRow][move.toCol];
+        // For sniper shots, piece stays in place
+        if (move.isSniperShot) {
+            piece = state.board[move.fromRow][move.fromCol];
+        }
+        if (piece == null) return;
 
         if (piece instanceof King) {
             if (piece.isWhite()) {
@@ -79,7 +106,7 @@ public class ChessEngine {
             }
         }
 
-        if (move.isCapture) {
+        if (move.isCapture && !move.isSniperShot) {
             if (move.toRow == 7) {
                 if (move.toCol == 7) state.whiteKingsideRookMoved = true;
                 if (move.toCol == 0) state.whiteQueensideRookMoved = true;
@@ -92,6 +119,7 @@ public class ChessEngine {
 
     private void updateEnPassantTarget(Move move) {
         state.enPassantTarget = null;
+        if (move.isSniperShot) return;
         Piece piece = state.board[move.toRow][move.toCol];
         if (piece instanceof Pawn) {
             int moveDist = Math.abs(move.toRow - move.fromRow);
@@ -112,7 +140,14 @@ public class ChessEngine {
     public List<Move> getPseudoLegalMoves(int fromRow, int fromCol) {
         Piece piece = state.board[fromRow][fromCol];
         if (piece == null) return Collections.emptyList();
-        return getSafeLegalMoves(piece, fromRow, fromCol);
+        List<Move> baseMoves = getSafeLegalMoves(piece, fromRow, fromCol);
+
+        // Card hook: modify move generation
+        if (state.cardManager != null) {
+            baseMoves = state.cardManager.applyMoveModifiers(
+                baseMoves, piece, fromRow, fromCol, this, state);
+        }
+        return baseMoves;
     }
 
     public boolean isMoveLegal(Move move) {
@@ -129,17 +164,41 @@ public class ChessEngine {
         for (Move m : pseudoLegalMoves) {
             if (m.fromRow == move.fromRow && m.fromCol == move.fromCol &&
             m.toRow == move.toRow && m.toCol == move.toCol) {
-                matchingMove = m;
-                found = true;
-                break;
+                // For sniper shots, also match target coordinates
+                if (m.isSniperShot && move.isSniperShot) {
+                    if (m.sniperTargetRow == move.sniperTargetRow &&
+                        m.sniperTargetCol == move.sniperTargetCol) {
+                        matchingMove = m;
+                        found = true;
+                        break;
+                    }
+                } else if (!m.isSniperShot && !move.isSniperShot) {
+                    matchingMove = m;
+                    found = true;
+                    break;
+                }
             }
         }
         if (!found) return false;
-        if (state.bannedSquare != null) {
+        if (state.bannedSquare != null && !move.isSniperShot) {
             if (move.toRow == state.bannedSquare.row && move.toCol == state.bannedSquare.col) {
                 return false;
             }
         }
+
+        // Card hook: check if target piece is immune to capture
+        if (matchingMove.isCapture && !matchingMove.isSniperShot && state.cardManager != null) {
+            if (state.cardManager.isCaptureImmune(state, move.toRow, move.toCol, matchingMove)) {
+                return false;
+            }
+        }
+
+        // Sniper shots don't move the piece, so check differently
+        if (matchingMove.isSniperShot) {
+            // Sniper doesn't move, so king can't be put in check by this
+            return true;
+        }
+
         GameState simulated = simulateMove(state, matchingMove);
         boolean ourKingInCheck = isKingInCheck(simulated, state.whiteToMove);
         return !ourKingInCheck;
@@ -170,6 +229,18 @@ public class ChessEngine {
     }
 
     private void performMoveOnState(GameState gstate, Move move) {
+        // Handle sniper shots: piece stays, target is removed
+        if (move.isSniperShot) {
+            Piece sniperTarget = gstate.board[move.sniperTargetRow][move.sniperTargetCol];
+            gstate.board[move.sniperTargetRow][move.sniperTargetCol] = null;
+            if (sniperTarget != null) {
+                gstate.capturesMade++;
+            }
+            gstate.piecesLeftStanding = Utils.countPiecesOnBoard(gstate);
+            gstate.lastMoveUCI = move.toUCI();
+            return;
+        }
+
         Piece moving = gstate.board[move.fromRow][move.fromCol];
         if (moving == null) {
             System.err.println("Error: No piece at move source " + move.fromRow + "," + move.fromCol);
@@ -203,7 +274,7 @@ public class ChessEngine {
         if (captured != null) {
             gstate.capturesMade++;
         }
-        gstate.piecesLeftStanding = countPiecesOnBoard(gstate);
+        gstate.piecesLeftStanding = Utils.countPiecesOnBoard(gstate);
         gstate.lastMoveUCI = move.toUCI();
     }
 
@@ -220,6 +291,29 @@ public class ChessEngine {
     public GameState simulateMove(GameState fromState, Move move) {
         GameState newState = fromState.copy();
         performMoveOnState(newState, move);
+
+        // Card: resolve capture in simulation for accurate AI evaluation
+        if (move.isCapture && newState.cardManager != null) {
+            Piece captured = null;
+            if (move.isSniperShot) {
+                // Already handled in performMoveOnState
+            } else if (move.isEnPassant) {
+                // captured already removed
+            } else {
+                // captured already removed, but we need the original
+                captured = fromState.board[move.toRow][move.toCol];
+            }
+            if (captured != null) {
+                Piece capturer = newState.board[move.toRow][move.toCol];
+                newState.cardManager.resolveCapture(newState, move, captured, capturer);
+            }
+        }
+
+        // Card: per-move triggers in simulation
+        if (newState.cardManager != null) {
+            newState.cardManager.onMovePerformed(newState, move);
+        }
+
         newState.whiteToMove = !newState.whiteToMove;
         return newState;
     }
@@ -240,31 +334,7 @@ public class ChessEngine {
     }
 
     public boolean isSquareAttacked(GameState gstate, int targetRow, int targetCol, boolean byWhite) {
-        if (isCheckingAttacks) {
-            return simpleAttackCheck(gstate, targetRow, targetCol, byWhite);
-        }
-        isCheckingAttacks = true;
-        try {
-            for (int r = 0; r < 8; r++) {
-                for (int c = 0; c < 8; c++) {
-                    Piece p = gstate.board[r][c];
-                    if (p != null && p.isWhite() == byWhite) {
-                        List<Move> moves = getSafeLegalMoves(p, r, c);
-                        for (Move m : moves) {
-                            if (m.toRow == targetRow && m.toCol == targetCol) {
-                                Piece target = gstate.board[targetRow][targetCol];
-                                if (target == null || target.isWhite() != byWhite) {
-                                    return true;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            return false;
-        } finally {
-            isCheckingAttacks = false;
-        }
+        return simpleAttackCheck(gstate, targetRow, targetCol, byWhite);
     }
 
     private boolean simpleAttackCheck(GameState gstate, int targetRow, int targetCol, boolean byWhite) {
@@ -288,17 +358,24 @@ public class ChessEngine {
             int dir = piece.isWhite() ? -1 : 1;
             return (toRow == fromRow + dir) && (dc == 1);
         } else if (piece instanceof Knight) {
-            return (dr == 2 && dc == 1) || (dr == 1 && dc == 2);
+            boolean normalAttack = (dr == 2 && dc == 1) || (dr == 1 && dc == 2);
+            if (normalAttack) return true;
         } else if (piece instanceof Bishop) {
-            return dr == dc && dr > 0 && isPathClear(state, fromRow, fromCol, toRow, toCol);
+            if (dr == dc && dr > 0 && isPathClear(state, fromRow, fromCol, toRow, toCol)) return true;
         } else if (piece instanceof Rook) {
-            return (dr == 0 || dc == 0) && (dr + dc > 0) && isPathClear(state, fromRow, fromCol, toRow, toCol);
+            if ((dr == 0 || dc == 0) && (dr + dc > 0) && isPathClear(state, fromRow, fromCol, toRow, toCol)) return true;
         } else if (piece instanceof Queen) {
-            return ((dr == dc) || (dr == 0 || dc == 0)) && (dr + dc > 0) &&
-            isPathClear(state, fromRow, fromCol, toRow, toCol);
+            if (((dr == dc) || (dr == 0 || dc == 0)) && (dr + dc > 0) &&
+            isPathClear(state, fromRow, fromCol, toRow, toCol)) return true;
         } else if (piece instanceof King) {
             return dr <= 1 && dc <= 1 && (dr + dc > 0);
         }
+
+        // Card hook: extended attack checks (Cavalry Charge radius, etc.)
+        if (state.cardManager != null) {
+            return state.cardManager.canAttackSquare(piece, fromRow, fromCol, toRow, toCol, state);
+        }
+
         return false;
     }
 
@@ -315,15 +392,7 @@ public class ChessEngine {
         return true;
     }
 
-    private int countPiecesOnBoard(GameState gstate) {
-        int count = 0;
-        for (int r = 0; r < 8; r++) {
-            for (int c = 0; c < 8; c++) {
-                if (gstate.board[r][c] != null) count++;
-            }
-        }
-        return count;
-    }
+
 
     private void checkEndConditions() {
         boolean sideToMove = state.whiteToMove;
@@ -375,7 +444,13 @@ public class ChessEngine {
     private HistoryEntry makeHistoryEntry(Move move) {
         HistoryEntry h = new HistoryEntry();
         h.move = move.copy();
-        h.captured = state.board[move.toRow][move.toCol];
+        if (move.isSniperShot) {
+            h.captured = state.board[move.sniperTargetRow][move.sniperTargetCol];
+        } else if (move.isEnPassant) {
+            h.captured = state.board[move.fromRow][move.toCol];
+        } else {
+            h.captured = state.board[move.toRow][move.toCol];
+        }
         h.prevEnPassantTarget = state.enPassantTarget;
         h.prevWhiteToMove = state.whiteToMove;
         h.prevWhiteKingMoved = state.whiteKingMoved;
@@ -396,28 +471,35 @@ public class ChessEngine {
 
     private void restoreHistoryEntry(HistoryEntry entry) {
         Move move = entry.move;
-        Piece moved = state.board[move.toRow][move.toCol];
-        state.board[move.fromRow][move.fromCol] = moved;
-        state.board[move.toRow][move.toCol] = entry.captured;
-        if (move.isEnPassant) {
-            int capRow = move.fromRow;
-            int capCol = move.toCol;
-            state.board[capRow][capCol] = entry.captured;
-        }
-        if (move.isCastle) {
-            if (move.toCol == 6) {
-                Piece rook = state.board[move.toRow][5];
-                state.board[move.toRow][7] = rook;
-                state.board[move.toRow][5] = null;
-            } else if (move.toCol == 2) {
-                Piece rook = state.board[move.toRow][3];
-                state.board[move.toRow][0] = rook;
-                state.board[move.toRow][3] = null;
+        if (move.isSniperShot) {
+            // Restore sniper target
+            state.board[move.sniperTargetRow][move.sniperTargetCol] = entry.captured;
+        } else {
+            Piece moved = state.board[move.toRow][move.toCol];
+            state.board[move.fromRow][move.fromCol] = moved;
+            if (move.isEnPassant) {
+                state.board[move.toRow][move.toCol] = null;
+                int capRow = move.fromRow;
+                int capCol = move.toCol;
+                state.board[capRow][capCol] = entry.captured;
+            } else {
+                state.board[move.toRow][move.toCol] = entry.captured;
             }
-        }
-        if (move.isPromotion) {
-            Piece pawn = new Pawn(moved.isWhite());
-            state.board[move.fromRow][move.fromCol] = pawn;
+            if (move.isCastle) {
+                if (move.toCol == 6) {
+                    Piece rook = state.board[move.toRow][5];
+                    state.board[move.toRow][7] = rook;
+                    state.board[move.toRow][5] = null;
+                } else if (move.toCol == 2) {
+                    Piece rook = state.board[move.toRow][3];
+                    state.board[move.toRow][0] = rook;
+                    state.board[move.toRow][3] = null;
+                }
+            }
+            if (move.isPromotion) {
+                Piece pawn = new Pawn(moved.isWhite());
+                state.board[move.fromRow][move.fromCol] = pawn;
+            }
         }
         state.whiteToMove = entry.prevWhiteToMove;
         state.enPassantTarget = entry.prevEnPassantTarget;

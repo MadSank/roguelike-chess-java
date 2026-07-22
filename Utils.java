@@ -1,4 +1,4 @@
-package ashes;
+ 
 
 import java.io.*;
 public class Utils {
@@ -142,6 +142,16 @@ public class Utils {
                 if (piece != null && piece.isWhite() == white) {
                     count++;
                 }
+            }
+        }
+        return count;
+    }
+
+    public static int countPiecesOnBoard(GameState state) {
+        int count = 0;
+        for (int r = 0; r < 8; r++) {
+            for (int c = 0; c < 8; c++) {
+                if (state.board[r][c] != null) count++;
             }
         }
         return count;

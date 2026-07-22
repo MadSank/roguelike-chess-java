@@ -1,4 +1,3 @@
-package ashes;
 
 import javax.swing.*;
 import java.awt.*;
@@ -73,9 +72,14 @@ public class RoguelikeChessAppSwing extends JFrame {
         gs.goldPlayer = 0;
         gs.roundNumber = 1;
 
-        List<Piece> starting = shopManager.collectPurchasedPieces();
+        // Reset card manager for new run
+        gs.cardManager = new CardManager();
 
+        List<Piece> starting = shopManager.collectPurchasedPieces();
         chess960.setupCustomChess960Board(gs, starting);
+
+        // Apply any card onGameStart effects
+        gs.cardManager.onGameStart(gs);
 
         aiPlayer = new AIPlayer(engine, gs.aiDepth);
         currentPhase = GamePhase.PLAYING;
@@ -110,12 +114,19 @@ public class RoguelikeChessAppSwing extends JFrame {
         fresh.gameResult = "";
         fresh.whiteToMove = true;
 
+        // Carry cards forward (persist between rounds)
+        fresh.cardManager = old.cardManager != null ? old.cardManager.copy() : new CardManager();
+
         chess960.setupCustomChess960Board(fresh, pieces);
+
+        // Apply card onGameStart effects (Blood Moon, Minefield, Vaulting Majors)
+        fresh.cardManager.onGameStart(fresh);
 
         System.out.println("=== PRE-ENGINE DEBUG ===");
         System.out.println("Game over flag: " + fresh.gameOver);
         System.out.println("White to move: " + fresh.whiteToMove);
         System.out.println("Pieces passed to Chess960: " + pieces.size());
+        System.out.println("Active cards: " + fresh.cardManager.getActiveCards().size());
         debugBoardState(fresh);
 
         engine = new ChessEngine(fresh);
@@ -146,9 +157,10 @@ public class RoguelikeChessAppSwing extends JFrame {
             ? String.format("%nWarning: AI depth %d → %d", old.aiDepth, fresh.aiDepth)
             : "";
         JOptionPane.showMessageDialog(this,
-            String.format("Round %d%nGold: %d | Score: %,d%s",
+            String.format("Round %d%nGold: %d | Score: %,d%nActive Cards: %d%s",
                 fresh.roundNumber, fresh.goldPlayer,
-                scoreManager.getCurrentScore(), warn),
+                scoreManager.getCurrentScore(),
+                fresh.cardManager.getActiveCards().size(), warn),
             "New Round", JOptionPane.INFORMATION_MESSAGE);
 
         AudioPlayer.playMusic("battle.wav", true);
@@ -225,7 +237,7 @@ public class RoguelikeChessAppSwing extends JFrame {
             }
         }
 
-        state.piecesLeftStanding = countPiecesOnBoard(state);
+        state.piecesLeftStanding = Utils.countPiecesOnBoard(state);
     }
 
     public void onPlayerMove(Move move) {
@@ -266,14 +278,21 @@ public class RoguelikeChessAppSwing extends JFrame {
             scoreManager.addMatchScore(earn, s.aiDepth, s.goldPlayer);
 
             JOptionPane.showMessageDialog(this,
-                String.format("Victory!%nGold Earned: %d%nTotal Gold: %d%nScore: %,d%nDepth %d",
-                    earn, s.goldPlayer, scoreManager.getCurrentScore(), s.aiDepth),
+                String.format("Victory!%nGold Earned: %d%nTotal Gold: %d%nScore: %,d%nDepth %d%nCards: %d",
+                    earn, s.goldPlayer, scoreManager.getCurrentScore(), s.aiDepth,
+                    s.cardManager.getActiveCards().size()),
                 "Round Complete", JOptionPane.INFORMATION_MESSAGE);
             transitionToShop();
         } else {
             AudioPlayer.playCheckmateSound();
             long finalScore = scoreManager.getCurrentScore();
             boolean high = scoreManager.isHighScore();
+
+            // Reset cards on death
+            if (s.cardManager != null) {
+                s.cardManager.resetForNewRun();
+            }
+
             JOptionPane.showMessageDialog(this,
                 String.format("Defeat!%nFinal Score: %,d%nRounds: %d%nDepth %d%n%s",
                     finalScore, s.roundNumber, s.aiDepth,
@@ -308,18 +327,11 @@ public class RoguelikeChessAppSwing extends JFrame {
         shopManager.saveGoldForNextGame(state.goldPlayer);
         shopManager.loadSurvivingPieces(state);
 
+        // Generate card offerings for this shop visit
+        shopManager.generateCardOfferings(state.cardManager, state.roundNumber);
+
         sceneLayout.show(sceneContainer, "SHOP");
         shopScene.refresh();
-    }
-
-    private int countPiecesOnBoard(GameState gstate) {
-        int count = 0;
-        for (int r = 0; r < 8; r++) {
-            for (int c = 0; c < 8; c++) {
-                if (gstate.board[r][c] != null) count++;
-            }
-        }
-        return count;
     }
 
     public void startMatch() {

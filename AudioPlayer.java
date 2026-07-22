@@ -1,4 +1,4 @@
-package ashes;
+ 
 
 import javax.sound.sampled.*;
 import java.io.File;
@@ -57,8 +57,10 @@ public class AudioPlayer {
     }
 
     public static void stopMusic() {
-        if (musicClip != null && musicClip.isRunning()) {
-            musicClip.stop();
+        if (musicClip != null) {
+            if (musicClip.isRunning()) {
+                musicClip.stop();
+            }
             musicClip.close();
             musicClip = null;
         }

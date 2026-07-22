@@ -1,4 +1,4 @@
-package ashes;
+ 
 
 import java.io.*;
 import java.util.*;
@@ -108,11 +108,10 @@ public class ScoreManager {
             if (!file.exists()) {
                 return; // No high scores file yet
             }
-            FileInputStream fis = new FileInputStream(file);
-            ObjectInputStream ois = new ObjectInputStream(fis);
-            highScores = (List<ScoreEntry>) ois.readObject();
-            ois.close();
-            fis.close();
+            try (FileInputStream fis = new FileInputStream(file);
+                 ObjectInputStream ois = new ObjectInputStream(fis)) {
+                highScores = (List<ScoreEntry>) ois.readObject();
+            }
             Collections.sort(highScores);
         } catch (Exception e) {
             System.err.println("Error loading high scores: " + e.getMessage());
@@ -121,12 +120,9 @@ public class ScoreManager {
     }
 
     private void saveHighScores() {
-        try {
-            FileOutputStream fos = new FileOutputStream(HIGH_SCORES_FILE);
-            ObjectOutputStream oos = new ObjectOutputStream(fos);
+        try (FileOutputStream fos = new FileOutputStream(HIGH_SCORES_FILE);
+             ObjectOutputStream oos = new ObjectOutputStream(fos)) {
             oos.writeObject(highScores);
-            oos.close();
-            fos.close();
         } catch (Exception e) {
             System.err.println("Error saving high scores: " + e.getMessage());
         }

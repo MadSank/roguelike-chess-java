@@ -1,4 +1,4 @@
-package ashes;
+
 
 import javax.swing.JOptionPane;
 import java.util.*;
@@ -12,6 +12,11 @@ public class ShopManager {
     private static final int MAX_QUEENS         = 3;
     private static final int MAX_NON_PAWN_TOTAL = 7;
     private static final int FREE_PAWNS         = 2;
+
+    // ─── CARD OFFERING STATE ────────────────────────────────────
+    private List<Card> currentFaceUpCards = new ArrayList<>();
+    private List<Card> currentMysteryPack = new ArrayList<>();
+    private boolean mysteryPackPurchased = false;
 
     public ShopManager() {
         prices.put("Pawn",    5);
@@ -119,6 +124,99 @@ public class ShopManager {
         System.out.println("Current nextRound size: " + nextRound.size());
         return true;
     }
+
+    // ─── CARD SHOP METHODS ──────────────────────────────────────
+
+    /**
+     * Generate the card offerings for this shop visit.
+     */
+    public void generateCardOfferings(CardManager cardManager, int roundNumber) {
+        Random rng = new Random(roundNumber * 997L + System.nanoTime());
+        currentFaceUpCards = cardManager.generateFaceUpOffering(roundNumber, rng);
+        currentMysteryPack = cardManager.generateMysteryPack(roundNumber, new Random(rng.nextLong()));
+        mysteryPackPurchased = false;
+        System.out.println("Shop: Generated " + currentFaceUpCards.size() + " face-up cards, " +
+                           currentMysteryPack.size() + " mystery pack cards");
+    }
+
+    public List<Card> getFaceUpCards() {
+        return Collections.unmodifiableList(currentFaceUpCards);
+    }
+
+    public List<Card> getMysteryPackCards() {
+        return Collections.unmodifiableList(currentMysteryPack);
+    }
+
+    public boolean isMysteryPackPurchased() {
+        return mysteryPackPurchased;
+    }
+
+    /**
+     * Purchase a face-up card at its full (premium) cost.
+     */
+    public boolean purchaseFaceUpCard(Card card, GameState state) {
+        int premiumCost = (int)(card.getCost() * 1.5); // 50% premium for face-up
+        if (state.goldPlayer < premiumCost) {
+            System.out.println("Not enough gold for card " + card.getName() +
+                " (need " + premiumCost + ", have " + state.goldPlayer + ")");
+            return false;
+        }
+
+        // Anti-checkmate safeguard
+        if (state.cardManager != null && !state.cardManager.validateCardApplication(card, state)) {
+            System.out.println("Card " + card.getName() + " blocked by anti-checkmate safeguard!");
+            return false;
+        }
+
+        state.goldPlayer -= premiumCost;
+        state.cardManager.addCard(card);
+        currentFaceUpCards.remove(card);
+        System.out.println("Purchased face-up card: " + card.getName() + " for " + premiumCost + " gold");
+        return true;
+    }
+
+    /**
+     * Purchase the mystery pack.
+     * Returns true if purchase succeeded. The draft UI is handled by ShopScene.
+     */
+    public boolean purchaseMysteryPack(GameState state, int roundNumber) {
+        if (mysteryPackPurchased) return false;
+        int cost = state.cardManager.getMysteryPackCost(roundNumber);
+        if (state.goldPlayer < cost) {
+            System.out.println("Not enough gold for mystery pack (need " + cost +
+                ", have " + state.goldPlayer + ")");
+            return false;
+        }
+        state.goldPlayer -= cost;
+        mysteryPackPurchased = true;
+        System.out.println("Purchased mystery pack for " + cost + " gold");
+        return true;
+    }
+
+    /**
+     * Player picks a card from the mystery pack draft.
+     */
+    public boolean draftMysteryCard(Card card, GameState state) {
+        if (!mysteryPackPurchased) return false;
+        if (!currentMysteryPack.contains(card)) return false;
+
+        // Anti-checkmate safeguard
+        if (state.cardManager != null && !state.cardManager.validateCardApplication(card, state)) {
+            System.out.println("Draft card " + card.getName() + " blocked by safeguard!");
+            return false;
+        }
+
+        state.cardManager.addCard(card);
+        currentMysteryPack.clear();
+        System.out.println("Drafted card from mystery pack: " + card.getName());
+        return true;
+    }
+
+    public int getFaceUpCardCost(Card card) {
+        return (int)(card.getCost() * 1.5);
+    }
+
+    // ─── EXISTING METHODS ───────────────────────────────────────
 
     private boolean unlockAllowed(int pawns, String type) {
         int required = getRequiredPawns(type);

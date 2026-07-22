@@ -1,4 +1,4 @@
-package ashes;
+ 
 
 import javax.swing.*;
 import java.awt.*;
