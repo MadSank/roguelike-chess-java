@@ -80,7 +80,8 @@ A roguelike chess run against an AI that gets stronger every level. Cards give r
 - Everything is rendered in Blender:
   - `tools/blender/fetch_assets.py` downloads the Poly Haven (CC0) textures and models into `tools/blender/assets/` (local only).
   - `tools/blender/build_scenes.py` builds the realistic cellar (brick, concrete, the round table and chess set, the hanging lamp, candles, crates, a barrel stove, a tiled bathroom with a mirror) with the four masked figures, and renders every clip at 1280×720 with Cycles (about an hour; `--draft` renders a fast EEVEE preview in minutes). Shared helpers live in `scene_kit.py`; the theatre masks in `masks.py`.
-  - `tools/blender/piece_sprites.py` renders the piece images until the realistic board (R2) replaces them.
+  - `tools/blender/build_board.py` renders the board you play on: the real chess set on the table from one fixed, tilted orthographic camera (about 20 s). Output in `resources/board/`: the empty board, one sprite per piece (with its contact shadow) and `board.properties` (square positions and sprite anchors). Because the camera is orthographic and only tilted, every square is the same rectangle, so the game draws the live position by placing sprites on squares, back rank first; highlights, mines and stuns are drawn flat on the squares under the pieces (BoardArt + BoardViewSwing).
+  - `tools/blender/piece_sprites.py` renders the old low-poly piece images, used only if the realistic board hasn't been rendered.
 - Masks: card dealer smiling, piece dealer sad, reseller smiling, opponent sad (each with its own cracks and break).
 - The game streams frames from disk (SceneClip: small cache plus a background decoder), scales HD frames smoothly and adds fine grain, a light vignette and lamp flicker (ScenePlayer). Low-resolution frames still get the chunky look.
 - If the rendered files are missing, the game falls back to its plain look.

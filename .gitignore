@@ -36,3 +36,4 @@ tools/blender/assets/
 
 # Python bytecode from the Blender scripts
 __pycache__/
+resources/board/

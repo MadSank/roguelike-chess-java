@@ -10,8 +10,17 @@ import java.util.List;
  * The chess board. Reads the current round from the RunController on every paint.
  */
 public class BoardViewSwing extends JPanel {
-    private static final int SQUARE_SIZE = 74; // board + status bar fit the 700 px window
+    private static final int SQUARE_SIZE = 74; // plain board: board + status bar fit the 700 px window
     private static final int BOARD_SIZE = 8 * SQUARE_SIZE;
+    /** The board area (realistic image or plain grid) is at most this wide. */
+    private static final int BOARD_AREA_MAX_W = 600;
+    private static final int STATUS_H = 58;
+
+    /** The realistic board (null = draw the plain 2D board). */
+    private final BoardArt art = BoardArt.get();
+    // Current layout, set by layoutBoard(): board area size, a8's top-left corner and one square's size.
+    private int areaW = BOARD_SIZE, areaH = BOARD_SIZE;
+    private double gx0, gy0, gsw = SQUARE_SIZE, gsh = SQUARE_SIZE, artScale = 1;
     /** How long a "+N gold" pop-up stays up, in milliseconds. */
     private static final int TOAST_MS = 2200;
 
@@ -56,9 +65,10 @@ public class BoardViewSwing extends JPanel {
                         return;
                     }
                 }
-                if (e.getX() >= BOARD_SIZE) return;
-                int row = e.getY() / SQUARE_SIZE;
-                int col = e.getX() / SQUARE_SIZE;
+                layoutBoard();
+                if (e.getX() < gx0 || e.getY() < gy0) return;
+                int row = (int) ((e.getY() - gy0) / gsh);
+                int col = (int) ((e.getX() - gx0) / gsw);
                 if (Square.insideBoard(row, col)) handleBoardClick(row, col);
             }
         });
@@ -167,6 +177,7 @@ public class BoardViewSwing extends JPanel {
         g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
         GameState state = engine().getGameState();
 
+        layoutBoard();
         // The room behind everything (if the scenes were rendered), dimmed so the board reads.
         if (scene.paint(g, getWidth(), getHeight())) {
             g.setColor(new Color(0, 0, 0, 120));
@@ -175,9 +186,9 @@ public class BoardViewSwing extends JPanel {
         drawBoard(g);
         drawMinefields(g, state);
         drawStunnedOverlay(g, state);
+        drawHighlights(g, state); // on the board, under the pieces
         drawPieces(g, state);
-        drawHighlights(g, state);
-        drawVignette(g);
+        if (art == null) drawVignette(g);
         drawStatusBar(g, state);
         drawHandPanel(g, state);
         if (SceneClip.load("table") != null) scene.drawGrain(g, getWidth(), getHeight());
@@ -189,7 +200,7 @@ public class BoardViewSwing extends JPanel {
         handButtons.clear();
         handCards.clear();
         RunController run = app.getRun();
-        int x = BOARD_SIZE + 12, w = getWidth() - x - 10;
+        int x = areaW + 12, w = getWidth() - x - 10;
         if (w < 120) return;
         g.setColor(new Color(15, 12, 22, 190)); // see-through: the room shows behind the hand
         g.fillRoundRect(x, 6, w, getHeight() - 12, 10, 10);
@@ -273,7 +284,55 @@ public class BoardViewSwing extends JPanel {
         if (line.length() > 0) g.drawString(line.toString(), x, y);
     }
 
+    // ─── BOARD GEOMETRY ─────────────────────────────────────────
+
+    /** Works out where the board and its squares are drawn for the current panel size. */
+    private void layoutBoard() {
+        if (art == null) {
+            areaW = areaH = BOARD_SIZE;
+            gx0 = gy0 = 0;
+            gsw = gsh = SQUARE_SIZE;
+            return;
+        }
+        int maxH = Math.max(200, getHeight() - STATUS_H - 4);
+        artScale = Math.min(BOARD_AREA_MAX_W / (double) art.width, maxH / (double) art.height);
+        areaW = (int) Math.round(art.width * artScale);
+        areaH = (int) Math.round(art.height * artScale);
+        gx0 = art.squareLeft * artScale;
+        gy0 = art.squareTop * artScale;
+        gsw = art.squareWidth * artScale;
+        gsh = art.squareHeight * artScale;
+    }
+
+    private double sqX(int col) { return gx0 + col * gsw; }
+
+    private double sqY(int row) { return gy0 + row * gsh; }
+
+    /** The square as a rectangle, inset by a fraction of its size. */
+    private Rectangle2D squareRect(int row, int col, double inset) {
+        return new Rectangle2D.Double(sqX(col) + gsw * inset, sqY(row) + gsh * inset,
+            gsw * (1 - 2 * inset), gsh * (1 - 2 * inset));
+    }
+
+    /** An ellipse lying flat on the square (looks right on the tilted realistic board too). */
+    private Ellipse2D squareEllipse(int row, int col, double scale) {
+        double w = gsw * scale, h = gsh * scale;
+        return new Ellipse2D.Double(sqX(col) + (gsw - w) / 2, sqY(row) + (gsh - h) / 2, w, h);
+    }
+
+    // ─── BOARD DRAWING ──────────────────────────────────────────
+
     private void drawBoard(Graphics2D g) {
+        if (art != null) {
+            g.drawImage(art.board(artScale), 0, 0, null);
+            // Let the table around the board fall off into the room's darkness.
+            float cx = (float) (gx0 + 4 * gsw), cy = (float) (gy0 + 4 * gsh);
+            g.setPaint(new RadialGradientPaint(new Point2D.Float(cx, cy), (float) (areaW * 0.62),
+                new float[]{0f, 0.62f, 1f},
+                new Color[]{new Color(0, 0, 0, 0), new Color(0, 0, 0, 60), new Color(0, 0, 0, 215)}));
+            g.fillRect(0, 0, areaW, areaH);
+            return;
+        }
         for (int row = 0; row < 8; row++) {
             for (int col = 0; col < 8; col++) {
                 g.setColor((row + col) % 2 == 0 ? LIGHT_SQ : DARK_SQ);
@@ -286,15 +345,14 @@ public class BoardViewSwing extends JPanel {
 
     private void drawMinefields(Graphics2D g, GameState state) {
         if (state.minefieldSquares == null || state.minefieldSquares.isEmpty()) return;
-        g.setFont(new Font("SansSerif", Font.BOLD, 20));
+        g.setFont(new Font("SansSerif", Font.BOLD, (int) Math.max(14, gsh * 0.3)));
         FontMetrics fm = g.getFontMetrics();
         for (int idx : state.minefieldSquares) {
             int r = idx / 8, c = idx % 8;
             g.setColor(MINE_COLOR);
-            g.fillRect(c * SQUARE_SIZE, r * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE);
-            g.setColor(new Color(200, 50, 50, 120));
-            g.drawString("☠", c * SQUARE_SIZE + (SQUARE_SIZE - fm.stringWidth("☠")) / 2,
-                         r * SQUARE_SIZE + SQUARE_SIZE / 2 + 7);
+            g.fill(squareRect(r, c, 0.0));
+            g.setColor(new Color(200, 50, 50, 150));
+            g.drawString("☠", (int) (sqX(c) + (gsw - fm.stringWidth("☠")) / 2), (int) (sqY(r) + gsh / 2 + fm.getAscent() / 3));
         }
     }
 
@@ -304,25 +362,33 @@ public class BoardViewSwing extends JPanel {
         for (int idx : state.stunnedPieces.keySet()) {
             int r = idx / 8, c = idx % 8;
             g.setColor(STUN_COLOR);
-            g.fillRect(c * SQUARE_SIZE, r * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE);
-            g.setColor(new Color(150, 150, 255, 180));
-            g.drawString("⛓", c * SQUARE_SIZE + 3, r * SQUARE_SIZE + 16);
+            g.fill(squareRect(r, c, 0.0));
+            g.setColor(new Color(150, 150, 255, 200));
+            g.drawString("⛓", (int) sqX(c) + 3, (int) sqY(r) + 16);
         }
     }
 
+    /** Pieces from the back rank forward, so nearer pieces overlap the ones behind them. */
     private void drawPieces(Graphics2D g, GameState state) {
         for (int row = 0; row < 8; row++) {
             for (int col = 0; col < 8; col++) {
                 Piece piece = state.board[row][col];
                 if (piece == null) continue;
-                g.setColor(new Color(0, 0, 0, 60));
-                g.fillOval(col * SQUARE_SIZE + 14, row * SQUARE_SIZE + 16, SQUARE_SIZE - 20, SQUARE_SIZE - 20);
-                drawPiece(g, piece, row, col);
+                if (art != null) {
+                    Image sprite = art.sprite(piece, artScale);
+                    double cx = sqX(col) + gsw / 2, cy = sqY(row) + gsh / 2;
+                    g.drawImage(sprite, (int) Math.round(cx - art.anchorX * artScale),
+                        (int) Math.round(cy - art.anchorY * artScale), null);
+                } else {
+                    g.setColor(new Color(0, 0, 0, 60));
+                    g.fillOval(col * SQUARE_SIZE + 14, row * SQUARE_SIZE + 16, SQUARE_SIZE - 20, SQUARE_SIZE - 20);
+                    drawPlainPiece(g, piece, row, col);
+                }
             }
         }
     }
 
-    private void drawPiece(Graphics2D g, Piece piece, int row, int col) {
+    private void drawPlainPiece(Graphics2D g, Piece piece, int row, int col) {
         Image img = ResourceLoader.loadPieceImage(piece.getName(), piece.isWhite());
         if (img != null) {
             g.drawImage(img, col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE, null);
@@ -341,32 +407,31 @@ public class BoardViewSwing extends JPanel {
         g.drawString(symbol, x, y);
     }
 
+    /** Selection, move dots and capture rings, drawn flat on the board under the pieces. */
     private void drawHighlights(Graphics2D g, GameState state) {
         if (selectedRow != -1) {
-            g.setColor(new Color(SELECT_GLOW.getRed(), SELECT_GLOW.getGreen(), SELECT_GLOW.getBlue(), 80));
-            g.fillRect(selectedCol * SQUARE_SIZE, selectedRow * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE);
+            g.setColor(new Color(SELECT_GLOW.getRed(), SELECT_GLOW.getGreen(), SELECT_GLOW.getBlue(), 90));
+            g.fill(squareRect(selectedRow, selectedCol, 0.0));
             g.setColor(SELECT_GLOW);
             g.setStroke(new BasicStroke(3));
-            g.drawRect(selectedCol * SQUARE_SIZE + 1, selectedRow * SQUARE_SIZE + 1, SQUARE_SIZE - 2, SQUARE_SIZE - 2);
+            g.draw(squareRect(selectedRow, selectedCol, 0.02));
             g.setStroke(new BasicStroke(1));
         }
         for (Move move : legalMoves) {
             if (state.board[move.toRow][move.toCol] == null && !move.isSniperShot) {
                 g.setColor(LEGAL_DOT);
-                int cx = move.toCol * SQUARE_SIZE + SQUARE_SIZE / 2;
-                int cy = move.toRow * SQUARE_SIZE + SQUARE_SIZE / 2;
-                g.fillOval(cx - 8, cy - 8, 16, 16);
+                g.fill(squareEllipse(move.toRow, move.toCol, 0.24));
             } else {
                 int tx = move.isSniperShot ? move.sniperTargetCol : move.toCol;
                 int ty = move.isSniperShot ? move.sniperTargetRow : move.toRow;
                 g.setColor(CAPTURE_RING);
                 g.setStroke(new BasicStroke(3));
-                g.drawOval(tx * SQUARE_SIZE + 4, ty * SQUARE_SIZE + 4, SQUARE_SIZE - 8, SQUARE_SIZE - 8);
+                g.draw(squareEllipse(ty, tx, 0.88));
                 g.setStroke(new BasicStroke(1));
                 if (move.isSniperShot) {
-                    g.setFont(new Font("SansSerif", Font.BOLD, 10));
+                    g.setFont(new Font("SansSerif", Font.BOLD, 12));
                     g.setColor(new Color(230, 57, 70));
-                    g.drawString("⊕", tx * SQUARE_SIZE + 5, ty * SQUARE_SIZE + 15);
+                    g.drawString("⊕", (int) sqX(tx) + 4, (int) sqY(ty) + 14);
                 }
             }
         }
@@ -383,11 +448,11 @@ public class BoardViewSwing extends JPanel {
 
     private void drawStatusBar(Graphics2D g, GameState s) {
         RunController run = app.getRun();
-        int y = BOARD_SIZE + 2;
+        int y = areaH + 2;
         g.setColor(INFO_BG);
-        g.fillRect(0, y, BOARD_SIZE, 58);
+        g.fillRect(0, y, areaW, STATUS_H);
         g.setColor(new Color(40, 20, 30));
-        g.drawLine(0, y, BOARD_SIZE, y);
+        g.drawLine(0, y, areaW, y);
 
         g.setFont(new Font("SansSerif", Font.BOLD, 14));
         g.setColor(GOLD_COLOR);
@@ -420,8 +485,8 @@ public class BoardViewSwing extends JPanel {
             String text = (String) t[0];
             float age = (now - (Long) t[1]) / (float) TOAST_MS;
             int alpha = (int) (255 * Math.max(0f, 1f - age));
-            int x = (BOARD_SIZE - fm.stringWidth(text)) / 2;
-            int y = BOARD_SIZE / 2 - 40 + i * 30 - (int) (age * 40); // drift upwards
+            int x = (areaW - fm.stringWidth(text)) / 2;
+            int y = areaH / 2 - 40 + i * 30 - (int) (age * 40); // drift upwards
             g.setColor(new Color(0, 0, 0, alpha / 2));
             g.fillRoundRect(x - 12, y - fm.getAscent(), fm.stringWidth(text) + 24, fm.getHeight() + 4, 12, 12);
             g.setColor(new Color(GOLD_COLOR.getRed(), GOLD_COLOR.getGreen(), GOLD_COLOR.getBlue(), alpha));
