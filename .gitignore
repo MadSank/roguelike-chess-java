@@ -7,8 +7,9 @@ out/
 *.ctxt
 package.bluej
 
-# Game saves / high scores (Java-serialized, local to each player)
+# Game saves / leaderboard (Java-serialized, local to each player)
 highscores.dat
+leaderboard.dat
 
 # Logs
 *.log

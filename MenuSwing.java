@@ -198,7 +198,7 @@ public class MenuSwing extends JPanel {
             int btn = getButtonAt(mx, my);
             switch (btn) {
                 case 0: app.startMatch(); break;
-                case 1: JOptionPane.showMessageDialog(this, "High Scores coming soon!", "Leaderboard", JOptionPane.INFORMATION_MESSAGE); break;
+                case 1: showLeaderboard(); break;
                 case 2: currentMenu = "SETTINGS"; repaint(); break;
                 case 3: currentMenu = "CREDITS"; repaint(); break;
                 case 4: if (JOptionPane.showConfirmDialog(this, "Exit?", "Exit", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) System.exit(0); break;
@@ -215,4 +215,11 @@ public class MenuSwing extends JPanel {
     }
 
     public void showMenu() { currentMenu = "MAIN"; repaint(); }
+
+    private void showLeaderboard() {
+        JTextArea text = new JTextArea(app.getLeaderboardText());
+        text.setEditable(false);
+        text.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 13));
+        JOptionPane.showMessageDialog(this, text, "Leaderboard (highest level beaten)", JOptionPane.PLAIN_MESSAGE);
+    }
 }

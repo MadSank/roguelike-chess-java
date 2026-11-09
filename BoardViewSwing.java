@@ -1,20 +1,27 @@
-
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.geom.*;
-import java.awt.image.BufferedImage;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
-import java.util.Set;
 
+/**
+ * The chess board. Reads the current round from the RunController on every paint.
+ */
 public class BoardViewSwing extends JPanel {
     private static final int SQUARE_SIZE = 80;
     private static final int BOARD_SIZE = 8 * SQUARE_SIZE;
-    private RoguelikeChessAppSwing app;
-    private ChessEngine engine;
+    /** How long a "+N gold" pop-up stays up, in milliseconds. */
+    private static final int TOAST_MS = 2200;
+
+    private final RoguelikeChessAppSwing app;
     private int selectedRow = -1, selectedCol = -1;
-    private List<Move> legalMoves;
+    private List<Move> legalMoves = new ArrayList<>();
+
+    /** Floating messages (bonus pop-ups): text and the time it appeared. */
+    private final List<Object[]> toasts = new ArrayList<>();
+    private final Timer toastTimer;
 
     private static final Color DARK_SQ = new Color(26, 26, 46);
     private static final Color LIGHT_SQ = new Color(22, 33, 62);
@@ -29,38 +36,43 @@ public class BoardViewSwing extends JPanel {
     private static final Color CRIMSON = new Color(180, 30, 40);
     private static final Color TEXT_DIM = new Color(120, 110, 130);
 
-    public BoardViewSwing(RoguelikeChessAppSwing app, ChessEngine engine) {
+    public BoardViewSwing(RoguelikeChessAppSwing app) {
         this.app = app;
-        this.engine = engine;
-        this.legalMoves = new ArrayList<>();
-        setupMouseHandlers();
         setPreferredSize(new Dimension(BOARD_SIZE + 10, BOARD_SIZE + 60));
         setBackground(BG);
-    }
-
-    private void setupMouseHandlers() {
         addMouseListener(new MouseAdapter() {
             @Override public void mouseClicked(MouseEvent e) {
                 int row = e.getY() / SQUARE_SIZE;
                 int col = e.getX() / SQUARE_SIZE;
-                if (!Square.insideBoard(row, col)) return;
-                handleBoardClick(row, col);
+                if (Square.insideBoard(row, col)) handleBoardClick(row, col);
             }
         });
+        toastTimer = new Timer(40, e -> {
+            long now = System.currentTimeMillis();
+            toasts.removeIf(t -> now - (Long) t[1] > TOAST_MS);
+            if (toasts.isEmpty()) ((Timer) e.getSource()).stop();
+            repaint();
+        });
+    }
+
+    private ChessEngine engine() {
+        return app.getRun().getEngine();
+    }
+
+    /** Shows a short message over the board that fades out on its own. */
+    public void showToast(String text) {
+        toasts.add(new Object[]{text, System.currentTimeMillis()});
+        if (!toastTimer.isRunning()) toastTimer.start();
+        repaint();
     }
 
     private void handleBoardClick(int row, int col) {
         if (app.isAiThinking()) return;
-        GameState state = engine.getGameState();
-        if (state.gameOver) return;
+        GameState state = engine().getGameState();
+        if (state.gameOver || !state.whiteToMove) return;
         Piece clickedPiece = state.board[row][col];
-        if (selectedRow == -1) {
-            if (clickedPiece != null && clickedPiece.isWhite() == state.whiteToMove) {
-                selectedRow = row; selectedCol = col;
-                legalMoves = engine.getLegalMovesFromSquare(row, col);
-                repaint();
-            }
-        } else {
+
+        if (selectedRow != -1) {
             // Normal moves land on the clicked square; sniper shots target it from a distance.
             List<Move> matching = new ArrayList<>();
             Move snipe = null;
@@ -86,11 +98,14 @@ public class BoardViewSwing extends JPanel {
                 if (chosen != null) app.onPlayerMove(chosen);
                 return;
             }
-            if (clickedPiece != null && clickedPiece.isWhite() == state.whiteToMove) {
-                selectedRow = row; selectedCol = col;
-                legalMoves = engine.getLegalMovesFromSquare(row, col);
-                repaint();
-            } else { clearSelection(); }
+        }
+        if (clickedPiece != null && clickedPiece.isWhite()) {
+            selectedRow = row;
+            selectedCol = col;
+            legalMoves = engine().getLegalMovesFromSquare(row, col);
+            repaint();
+        } else {
+            clearSelection();
         }
     }
 
@@ -117,11 +132,17 @@ public class BoardViewSwing extends JPanel {
     }
 
     private void clearSelection() {
-        selectedRow = -1; selectedCol = -1;
-        legalMoves.clear(); repaint();
+        selectedRow = -1;
+        selectedCol = -1;
+        legalMoves = new ArrayList<>();
+        repaint();
     }
 
-    public void refresh() { clearSelection(); repaint(); }
+    public void refresh() {
+        clearSelection();
+    }
+
+    // ─── PAINTING ───────────────────────────────────────────────
 
     @Override
     protected void paintComponent(Graphics g0) {
@@ -129,71 +150,63 @@ public class BoardViewSwing extends JPanel {
         Graphics2D g = (Graphics2D) g0;
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
+        GameState state = engine().getGameState();
 
         drawBoard(g);
-        drawMinefields(g);
-        drawStunnedOverlay(g);
-        drawPieces(g);
-        drawHighlights(g);
+        drawMinefields(g, state);
+        drawStunnedOverlay(g, state);
+        drawPieces(g, state);
+        drawHighlights(g, state);
         drawVignette(g);
-        drawStatusBar(g);
+        drawStatusBar(g, state);
+        drawToasts(g);
     }
 
     private void drawBoard(Graphics2D g) {
         for (int row = 0; row < 8; row++) {
             for (int col = 0; col < 8; col++) {
-                Color sq = (row + col) % 2 == 0 ? LIGHT_SQ : DARK_SQ;
-                g.setColor(sq);
+                g.setColor((row + col) % 2 == 0 ? LIGHT_SQ : DARK_SQ);
                 g.fillRect(col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE);
-                // Subtle grid lines
                 g.setColor(new Color(255, 255, 255, 8));
                 g.drawRect(col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE);
             }
         }
     }
 
-    private void drawMinefields(Graphics2D g) {
-        GameState state = engine.getGameState();
+    private void drawMinefields(Graphics2D g, GameState state) {
         if (state.minefieldSquares == null || state.minefieldSquares.isEmpty()) return;
+        g.setFont(new Font("SansSerif", Font.BOLD, 20));
+        FontMetrics fm = g.getFontMetrics();
         for (int idx : state.minefieldSquares) {
             int r = idx / 8, c = idx % 8;
             g.setColor(MINE_COLOR);
             g.fillRect(c * SQUARE_SIZE, r * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE);
-            // Skull icon
             g.setColor(new Color(200, 50, 50, 120));
-            g.setFont(new Font("SansSerif", Font.BOLD, 20));
-            FontMetrics fm = g.getFontMetrics();
-            g.drawString("☠", c * SQUARE_SIZE + (SQUARE_SIZE - fm.stringWidth("☠"))/2,
-                         r * SQUARE_SIZE + SQUARE_SIZE/2 + 7);
+            g.drawString("☠", c * SQUARE_SIZE + (SQUARE_SIZE - fm.stringWidth("☠")) / 2,
+                         r * SQUARE_SIZE + SQUARE_SIZE / 2 + 7);
         }
     }
 
-    private void drawStunnedOverlay(Graphics2D g) {
-        GameState state = engine.getGameState();
+    private void drawStunnedOverlay(Graphics2D g, GameState state) {
         if (state.stunnedPieces == null || state.stunnedPieces.isEmpty()) return;
+        g.setFont(new Font("SansSerif", Font.PLAIN, 14));
         for (int idx : state.stunnedPieces.keySet()) {
             int r = idx / 8, c = idx % 8;
             g.setColor(STUN_COLOR);
             g.fillRect(c * SQUARE_SIZE, r * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE);
-            // Chain icon
             g.setColor(new Color(150, 150, 255, 180));
-            g.setFont(new Font("SansSerif", Font.PLAIN, 14));
             g.drawString("⛓", c * SQUARE_SIZE + 3, r * SQUARE_SIZE + 16);
         }
     }
 
-    private void drawPieces(Graphics2D g) {
-        GameState state = engine.getGameState();
+    private void drawPieces(Graphics2D g, GameState state) {
         for (int row = 0; row < 8; row++) {
             for (int col = 0; col < 8; col++) {
                 Piece piece = state.board[row][col];
-                if (piece != null) {
-                    // Drop shadow
-                    g.setColor(new Color(0, 0, 0, 60));
-                    int sx = col * SQUARE_SIZE + 4, sy = row * SQUARE_SIZE + 4;
-                    g.fillOval(sx + 10, sy + 12, SQUARE_SIZE - 20, SQUARE_SIZE - 20);
-                    drawPiece(g, piece, row, col);
-                }
+                if (piece == null) continue;
+                g.setColor(new Color(0, 0, 0, 60));
+                g.fillOval(col * SQUARE_SIZE + 14, row * SQUARE_SIZE + 16, SQUARE_SIZE - 20, SQUARE_SIZE - 20);
+                drawPiece(g, piece, row, col);
             }
         }
     }
@@ -202,26 +215,23 @@ public class BoardViewSwing extends JPanel {
         Image img = ResourceLoader.loadPieceImage(piece.getName(), piece.isWhite());
         if (img != null) {
             g.drawImage(img, col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE, null);
-        } else {
-            g.setColor(piece.isWhite() ? new Color(220, 215, 230) : new Color(30, 25, 40));
-            g.setFont(new Font("Serif", Font.BOLD, 32));
-            String symbol = Utils.getPieceSymbol(piece);
-            FontMetrics fm = g.getFontMetrics();
-            int x = col * SQUARE_SIZE + (SQUARE_SIZE - fm.stringWidth(symbol)) / 2;
-            int y = row * SQUARE_SIZE + (SQUARE_SIZE + fm.getAscent()) / 2 - 4;
-            // Text outline for contrast
-            if (piece.isWhite()) {
-                g.setColor(new Color(0, 0, 0, 80));
-                g.drawString(symbol, x+1, y+1);
-            }
-            g.setColor(piece.isWhite() ? new Color(230, 225, 240) : new Color(50, 40, 65));
-            g.drawString(symbol, x, y);
+            return;
         }
+        g.setFont(new Font("Serif", Font.BOLD, 32));
+        String symbol = Utils.getPieceSymbol(piece);
+        FontMetrics fm = g.getFontMetrics();
+        int x = col * SQUARE_SIZE + (SQUARE_SIZE - fm.stringWidth(symbol)) / 2;
+        int y = row * SQUARE_SIZE + (SQUARE_SIZE + fm.getAscent()) / 2 - 4;
+        if (piece.isWhite()) {
+            g.setColor(new Color(0, 0, 0, 80));
+            g.drawString(symbol, x + 1, y + 1);
+        }
+        g.setColor(piece.isWhite() ? new Color(230, 225, 240) : new Color(50, 40, 65));
+        g.drawString(symbol, x, y);
     }
 
-    private void drawHighlights(Graphics2D g) {
-        if (selectedRow != -1 && selectedCol != -1) {
-            // Crimson selection glow
+    private void drawHighlights(Graphics2D g, GameState state) {
+        if (selectedRow != -1) {
             g.setColor(new Color(SELECT_GLOW.getRed(), SELECT_GLOW.getGreen(), SELECT_GLOW.getBlue(), 80));
             g.fillRect(selectedCol * SQUARE_SIZE, selectedRow * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE);
             g.setColor(SELECT_GLOW);
@@ -229,19 +239,17 @@ public class BoardViewSwing extends JPanel {
             g.drawRect(selectedCol * SQUARE_SIZE + 1, selectedRow * SQUARE_SIZE + 1, SQUARE_SIZE - 2, SQUARE_SIZE - 2);
             g.setStroke(new BasicStroke(1));
         }
-
         for (Move move : legalMoves) {
-            if (engine.getGameState().board[move.toRow][move.toCol] == null && !move.isSniperShot) {
+            if (state.board[move.toRow][move.toCol] == null && !move.isSniperShot) {
                 g.setColor(LEGAL_DOT);
-                int cx = move.toCol * SQUARE_SIZE + SQUARE_SIZE/2;
-                int cy = move.toRow * SQUARE_SIZE + SQUARE_SIZE/2;
+                int cx = move.toCol * SQUARE_SIZE + SQUARE_SIZE / 2;
+                int cy = move.toRow * SQUARE_SIZE + SQUARE_SIZE / 2;
                 g.fillOval(cx - 8, cy - 8, 16, 16);
             } else {
-                // Capture/sniper ring
-                g.setColor(CAPTURE_RING);
-                g.setStroke(new BasicStroke(3));
                 int tx = move.isSniperShot ? move.sniperTargetCol : move.toCol;
                 int ty = move.isSniperShot ? move.sniperTargetRow : move.toRow;
+                g.setColor(CAPTURE_RING);
+                g.setStroke(new BasicStroke(3));
                 g.drawOval(tx * SQUARE_SIZE + 4, ty * SQUARE_SIZE + 4, SQUARE_SIZE - 8, SQUARE_SIZE - 8);
                 g.setStroke(new BasicStroke(1));
                 if (move.isSniperShot) {
@@ -254,17 +262,16 @@ public class BoardViewSwing extends JPanel {
     }
 
     private void drawVignette(Graphics2D g) {
-        int w = BOARD_SIZE, h = BOARD_SIZE;
         RadialGradientPaint vig = new RadialGradientPaint(
-            new Point2D.Float(w/2f, h/2f), w * 0.65f,
+            new Point2D.Float(BOARD_SIZE / 2f, BOARD_SIZE / 2f), BOARD_SIZE * 0.65f,
             new float[]{0f, 0.7f, 1f},
-            new Color[]{new Color(0,0,0,0), new Color(0,0,0,30), new Color(0,0,0,100)});
+            new Color[]{new Color(0, 0, 0, 0), new Color(0, 0, 0, 30), new Color(0, 0, 0, 100)});
         g.setPaint(vig);
-        g.fillRect(0, 0, w, h);
+        g.fillRect(0, 0, BOARD_SIZE, BOARD_SIZE);
     }
 
-    private void drawStatusBar(Graphics2D g) {
-        GameState s = engine.getGameState();
+    private void drawStatusBar(Graphics2D g, GameState s) {
+        RunController run = app.getRun();
         int y = BOARD_SIZE + 2;
         g.setColor(INFO_BG);
         g.fillRect(0, y, BOARD_SIZE, 58);
@@ -273,24 +280,42 @@ public class BoardViewSwing extends JPanel {
 
         g.setFont(new Font("SansSerif", Font.BOLD, 14));
         g.setColor(GOLD_COLOR);
-        g.drawString("Gold: " + s.goldPlayer, 15, y + 20);
+        g.drawString("Gold: " + run.getGold(), 15, y + 20);
         g.setColor(CRIMSON);
-        g.drawString("Round " + s.roundNumber, 150, y + 20);
+        g.drawString("Level " + run.getLevel(), 150, y + 20);
         g.setColor(TEXT_DIM);
-        g.drawString("Depth " + s.aiDepth, 280, y + 20);
-
-        // Active card count
+        g.drawString("AI depth " + s.aiDepth, 260, y + 20);
         int cardCount = s.cardManager != null ? s.cardManager.getActiveCards().size() : 0;
         g.setColor(new Color(100, 80, 150));
         g.drawString("Cards: " + cardCount, 400, y + 20);
 
         g.setFont(new Font("SansSerif", Font.PLAIN, 11));
         g.setColor(TEXT_DIM);
-        g.drawString(s.whiteToMove ? "Your turn" : "AI thinking...", 15, y + 42);
+        String turn = s.gameOver ? "" : (app.isAiThinking() || !s.whiteToMove ? "AI thinking..." : "Your turn");
+        g.drawString(turn, 15, y + 42);
         if (s.gameOver) {
             g.setColor(CRIMSON);
             g.setFont(new Font("Serif", Font.BOLD, 14));
             g.drawString(s.gameResult, 150, y + 42);
+        }
+    }
+
+    private void drawToasts(Graphics2D g) {
+        long now = System.currentTimeMillis();
+        g.setFont(new Font("SansSerif", Font.BOLD, 20));
+        FontMetrics fm = g.getFontMetrics();
+        int i = 0;
+        for (Object[] t : toasts) {
+            String text = (String) t[0];
+            float age = (now - (Long) t[1]) / (float) TOAST_MS;
+            int alpha = (int) (255 * Math.max(0f, 1f - age));
+            int x = (BOARD_SIZE - fm.stringWidth(text)) / 2;
+            int y = BOARD_SIZE / 2 - 40 + i * 30 - (int) (age * 40); // drift upwards
+            g.setColor(new Color(0, 0, 0, alpha / 2));
+            g.fillRoundRect(x - 12, y - fm.getAscent(), fm.stringWidth(text) + 24, fm.getHeight() + 4, 12, 12);
+            g.setColor(new Color(GOLD_COLOR.getRed(), GOLD_COLOR.getGreen(), GOLD_COLOR.getBlue(), alpha));
+            g.drawString(text, x, y);
+            i++;
         }
     }
 }

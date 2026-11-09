@@ -24,11 +24,6 @@ public class ChessEngine {
         return state;
     }
 
-    public void reset() {
-        this.state = new GameState();
-        this.history.clear();
-    }
-
     // ─── APPLYING MOVES ─────────────────────────────────────────
 
     /**
@@ -310,6 +305,12 @@ public class ChessEngine {
             }
         }
         return false;
+    }
+
+    /** True if the piece on (fromRow, fromCol) attacks (toRow, toCol), including card effects. */
+    public boolean pieceAttacks(GameState gs, int fromRow, int fromCol, int toRow, int toCol) {
+        Piece p = gs.board[fromRow][fromCol];
+        return p != null && canPieceAttackSquare(p, fromRow, fromCol, toRow, toCol, gs);
     }
 
     private boolean canPieceAttackSquare(Piece piece, int fromRow, int fromCol, int toRow, int toCol, GameState gs) {

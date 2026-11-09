@@ -45,14 +45,6 @@ public class Move implements Serializable {
         return m;
     }
 
-    public boolean equalsIgnoringMeta(Move other) {
-        if (other == null) return false;
-        return this.fromRow == other.fromRow &&
-        this.fromCol == other.fromCol &&
-        this.toRow == other.toRow &&
-        this.toCol == other.toCol;
-    }
-
     public void copyMetaFrom(Move other) {
         if (other == null) return;
         this.isCapture = other.isCapture;

@@ -1,50 +1,49 @@
- 
-
 import java.io.*;
 import java.util.*;
 
+/**
+ * Leaderboard: runs are ranked by the highest level beaten (DESIGN.md).
+ * Saved in leaderboard.dat next to the game (not tracked by git).
+ */
 public class ScoreManager {
-    private static final String HIGH_SCORES_FILE = "highscores.dat";
-    private List<ScoreEntry> highScores;
-    private int currentScore;
-    private String playerName;
-    private static final double BASE_MULTIPLIER = 1.5;
+    private static final String LEADERBOARD_FILE = "leaderboard.dat";
+    private static final int MAX_ENTRIES = 10;
+
+    private List<ScoreEntry> entries = new ArrayList<>();
+    private String playerName = "Anonymous";
+    private final File file;
+
     public ScoreManager() {
-        this.highScores = new ArrayList<>();
-        this.currentScore = 0;
-        this.playerName = "Anonymous";
-        loadHighScores();
+        this(new File(LEADERBOARD_FILE));
+    }
+
+    /** For tests: use a different file. */
+    public ScoreManager(File file) {
+        this.file = file;
+        load();
     }
 
     public static class ScoreEntry implements Serializable, Comparable<ScoreEntry> {
-        private static final long serialVersionUID = 1L;
-        private String playerName;
-        private int score;
-        private Date date;
-        private int roundsSurvived;
-        public ScoreEntry(String playerName, int score, int roundsSurvived) {
+        private static final long serialVersionUID = 2L;
+        private final String playerName;
+        private final int highestLevelBeaten;
+        private final Date date;
+
+        public ScoreEntry(String playerName, int highestLevelBeaten) {
             this.playerName = playerName;
-            this.score = score;
+            this.highestLevelBeaten = highestLevelBeaten;
             this.date = new Date();
-            this.roundsSurvived = roundsSurvived;
         }
 
         public String getPlayerName() { return playerName; }
 
-        public int getScore() { return score; }
+        public int getHighestLevelBeaten() { return highestLevelBeaten; }
 
         public Date getDate() { return date; }
 
-        public int getRoundsSurvived() { return roundsSurvived; }
-
         @Override
         public int compareTo(ScoreEntry other) {
-            return Integer.compare(other.score, this.score);
-        }
-
-        @Override
-        public String toString() {
-            return String.format("%-15s %10d %3d rounds %tF", playerName, score, roundsSurvived, date);
+            return Integer.compare(other.highestLevelBeaten, this.highestLevelBeaten);
         }
     }
 
@@ -54,91 +53,63 @@ public class ScoreManager {
         }
     }
 
-    public void addMatchScore(int goldEarned, int aiDepth, int currentGold) {
-        double depthMultiplier = Math.pow(BASE_MULTIPLIER, aiDepth);
-        int matchScore = (int)(goldEarned * depthMultiplier);
-        this.currentScore += matchScore;
+    public String getPlayerName() {
+        return playerName;
     }
 
-    public int getCurrentScore() {
-        return currentScore;
+    /** True if a run that beat this level would make the top 10. */
+    public boolean qualifies(int highestLevelBeaten) {
+        if (highestLevelBeaten <= 0) return false;
+        if (entries.size() < MAX_ENTRIES) return true;
+        return highestLevelBeaten > entries.get(entries.size() - 1).getHighestLevelBeaten();
     }
 
-    public void resetSession() {
-        this.currentScore = 0;
-    }
-
-    public boolean isHighScore() {
-        if (highScores.size() < 10) return true;
-        return currentScore > highScores.get(highScores.size() - 1).getScore();
-    }
-
-    public void submitScore(int roundsSurvived) {
-        if (currentScore > 0) {
-            ScoreEntry newEntry = new ScoreEntry(playerName, currentScore, roundsSurvived);
-            highScores.add(newEntry);
-            Collections.sort(highScores);
-            if (highScores.size() > 10) {
-                highScores = new ArrayList<>(highScores.subList(0, 10));
-            }
-            saveHighScores();
+    /** Records a finished run. Returns true if it made the leaderboard. */
+    public boolean submit(int highestLevelBeaten) {
+        if (!qualifies(highestLevelBeaten)) return false;
+        entries.add(new ScoreEntry(playerName, highestLevelBeaten));
+        Collections.sort(entries);
+        if (entries.size() > MAX_ENTRIES) {
+            entries = new ArrayList<>(entries.subList(0, MAX_ENTRIES));
         }
+        save();
+        return true;
     }
 
-    public String getHighScoresTable() {
-        if (highScores.isEmpty()) {
-            return "No high scores yet!\nBe the first to set a record!";
+    public List<ScoreEntry> getEntries() {
+        return Collections.unmodifiableList(entries);
+    }
+
+    public String getLeaderboardText() {
+        if (entries.isEmpty()) {
+            return "No runs recorded yet.\nBeat level 1 to get on the board!";
         }
         StringBuilder sb = new StringBuilder();
-        sb.append("Rank  Player          Score     Rounds  Date\n");
-        sb.append("----  ------------  ----------  ------  ----------\n");
-        for (int i = 0; i < highScores.size(); i++) {
-            ScoreEntry entry = highScores.get(i);
-            sb.append(String.format("%2d.   %-12s %10d   %3d     %tF%n",
-                    i + 1, entry.getPlayerName(), entry.getScore(),
-                    entry.getRoundsSurvived(), entry.getDate()));
+        sb.append(String.format("%-5s %-14s %-12s %s%n", "Rank", "Player", "Best level", "Date"));
+        for (int i = 0; i < entries.size(); i++) {
+            ScoreEntry e = entries.get(i);
+            sb.append(String.format("%-5d %-14s %-12d %tF%n", i + 1, e.getPlayerName(), e.getHighestLevelBeaten(), e.getDate()));
         }
         return sb.toString();
     }
 
     @SuppressWarnings("unchecked")
-    private void loadHighScores() {
-        try {
-            File file = new File(HIGH_SCORES_FILE);
-            if (!file.exists()) {
-                return; // No high scores file yet
-            }
-            try (FileInputStream fis = new FileInputStream(file);
-                 ObjectInputStream ois = new ObjectInputStream(fis)) {
-                highScores = (List<ScoreEntry>) ois.readObject();
-            }
-            Collections.sort(highScores);
+    private void load() {
+        if (!file.exists()) return;
+        try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(file))) {
+            entries = new ArrayList<>((List<ScoreEntry>) in.readObject());
+            Collections.sort(entries);
         } catch (Exception e) {
-            System.err.println("Error loading high scores: " + e.getMessage());
-            highScores = new ArrayList<>(); // Reset if corrupted
+            System.err.println("Could not read leaderboard (" + e.getMessage() + "); starting a new one.");
+            entries = new ArrayList<>();
         }
     }
 
-    private void saveHighScores() {
-        try (FileOutputStream fos = new FileOutputStream(HIGH_SCORES_FILE);
-             ObjectOutputStream oos = new ObjectOutputStream(fos)) {
-            oos.writeObject(highScores);
+    private void save() {
+        try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(file))) {
+            out.writeObject(new ArrayList<>(entries));
         } catch (Exception e) {
-            System.err.println("Error saving high scores: " + e.getMessage());
+            System.err.println("Could not save leaderboard: " + e.getMessage());
         }
-    }
-
-    public int getMinimumHighScore() {
-        if (highScores.isEmpty()) return 0;
-        return highScores.get(highScores.size() - 1).getScore();
-    }
-
-    public int getHighestScore() {
-        if (highScores.isEmpty()) return 0;
-        return highScores.get(0).getScore();
-    }
-
-    private int getRoundsSurvived() {
-        return 1;
     }
 }

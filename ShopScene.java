@@ -1,43 +1,87 @@
-
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.geom.*;
-import java.util.*;
+import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * The shop between rounds. Drawing and click areas come from the same code: every button
+ * registers its rectangle while it is painted, so the two can't drift apart.
+ */
 public class ShopScene extends JPanel {
     private final RoguelikeChessAppSwing app;
-    private final ShopManager shop;
-    private final ScoreManager score;
     private boolean showingDraft = false;
-    private List<Card> draftCards = new ArrayList<>();
+    private String status = "";
+
+    /** Buttons registered during the last paint, in drawing order. */
+    private final List<Button> buttons = new ArrayList<>();
+    private Point mouse = new Point(-1, -1);
 
     private static final Color BG_DARK = new Color(10, 8, 12);
-    private static final Color PANEL_BG = new Color(18, 14, 22, 220);
     private static final Color CRIMSON = new Color(180, 30, 40);
     private static final Color CRIMSON_DIM = new Color(120, 20, 30);
     private static final Color GOLD_COLOR = new Color(212, 175, 55);
+    private static final Color GOOD = new Color(90, 190, 110);
     private static final Color TEXT_DIM = new Color(140, 130, 150);
     private static final Color CARD_BG = new Color(25, 20, 32);
     private static final Color CARD_BORDER = new Color(80, 30, 40);
     private static final Color BTN_BG = new Color(40, 20, 25);
     private static final Color BTN_HOVER = new Color(70, 30, 40);
+    private static final Color BTN_OFF = new Color(30, 28, 32);
 
-    public ShopScene(RoguelikeChessAppSwing app, ChessEngine engine,
-            ShopManager shop, ScoreManager score) {
-        this.app = app; this.shop = shop; this.score = score;
+    private static class Button {
+        final Rectangle area;
+        final boolean enabled;
+        final Runnable action;
+
+        Button(Rectangle area, boolean enabled, Runnable action) {
+            this.area = area;
+            this.enabled = enabled;
+            this.action = action;
+        }
+    }
+
+    public ShopScene(RoguelikeChessAppSwing app) {
+        this.app = app;
         setLayout(null);
         setBackground(BG_DARK);
         addMouseListener(new MouseAdapter() {
-            @Override public void mouseClicked(MouseEvent e) { handleClick(e.getX(), e.getY()); }
+            @Override public void mouseClicked(MouseEvent e) { handleClick(e.getPoint()); }
         });
         addMouseMotionListener(new MouseMotionAdapter() {
-            @Override public void mouseMoved(MouseEvent e) { repaint(); }
+            @Override public void mouseMoved(MouseEvent e) { mouse = e.getPoint(); repaint(); }
         });
     }
 
-    private ChessEngine getEngine() { return app.getEngine(); }
+    public void refresh() {
+        showingDraft = false;
+        status = "";
+        repaint();
+    }
+
+    private RunController run() { return app.getRun(); }
+
+    private ShopManager shop() { return run().getShop(); }
+
+    /** Runs a shop action and shows its result as the status line. */
+    private void act(ShopManager.Result r, String success) {
+        status = r == ShopManager.Result.OK ? success : r.message;
+        if (r == ShopManager.Result.OK) AudioPlayer.playMoveSound();
+    }
+
+    private void handleClick(Point p) {
+        for (int i = buttons.size() - 1; i >= 0; i--) {
+            Button b = buttons.get(i);
+            if (b.area.contains(p)) {
+                if (b.enabled) b.action.run();
+                repaint();
+                return;
+            }
+        }
+    }
+
+    // ─── PAINTING ───────────────────────────────────────────────
 
     @Override
     protected void paintComponent(Graphics g0) {
@@ -45,318 +89,264 @@ public class ShopScene extends JPanel {
         Graphics2D g = (Graphics2D) g0;
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
+        buttons.clear();
         int w = getWidth(), h = getHeight();
 
-        // Background gradient
-        GradientPaint bgGrad = new GradientPaint(0, 0, BG_DARK, 0, h, new Color(15, 10, 20));
-        g.setPaint(bgGrad);
+        g.setPaint(new GradientPaint(0, 0, BG_DARK, 0, h, new Color(15, 10, 20)));
         g.fillRect(0, 0, w, h);
-
-        // Vignette
-        RadialGradientPaint vig = new RadialGradientPaint(
-            new Point2D.Float(w/2f, h/2f), Math.max(w, h) * 0.7f,
+        g.setPaint(new RadialGradientPaint(new Point2D.Float(w / 2f, h / 2f), Math.max(w, h) * 0.7f,
             new float[]{0f, 0.6f, 1f},
-            new Color[]{new Color(0,0,0,0), new Color(0,0,0,60), new Color(0,0,0,180)});
-        g.setPaint(vig);
+            new Color[]{new Color(0, 0, 0, 0), new Color(0, 0, 0, 60), new Color(0, 0, 0, 180)}));
         g.fillRect(0, 0, w, h);
 
-        GameState s = getEngine().getGameState();
-
-        // Title
-        g.setFont(new Font("Serif", Font.BOLD, 36));
+        int level = run().getLevel();
+        g.setFont(new Font("Serif", Font.BOLD, 34));
         g.setColor(CRIMSON);
-        drawCenteredString(g, "— THE ARMORY —", w/2, 45);
+        centered(g, "— THE ARMORY —", (w - 200) / 2, 42);
 
-        // Gold & Round
         g.setFont(new Font("SansSerif", Font.BOLD, 20));
         g.setColor(GOLD_COLOR);
-        g.drawString("⬡ Gold: " + s.goldPlayer, 30, 40);
+        g.drawString("Gold: " + shop().getGold(), 30, 40);
+
+        drawRequirement(g, level);
+        drawPieceShop(g, 30, 112);
+        drawCardShop(g, 30, 290, level);
+        drawOwnedCards(g, w - 200, 60, h - 150);
+
+        g.setFont(new Font("SansSerif", Font.ITALIC, 13));
         g.setColor(TEXT_DIM);
-        g.setFont(new Font("SansSerif", Font.PLAIN, 16));
-        g.drawString("Round " + s.roundNumber + " | Depth " + s.aiDepth, w - 200, 40);
+        g.drawString(status, 30, h - 88);
 
-        // Active cards sidebar
-        drawActiveCards(g, w, h, s);
+        boolean ready = shop().meetsRequirement(level);
+        int btnW = 280, btnX = (w - 200) / 2 - btnW / 2, btnY = h - 70;
+        button(g, ready ? "START LEVEL " + level : "NEED MORE MATERIAL", btnX, btnY, btnW, 46, ready, CRIMSON,
+            new Font("Serif", Font.BOLD, 16), () -> {
+                if (!app.onShoppingComplete()) status = "Your army doesn't meet the requirement yet.";
+            });
+        button(g, "Give up", btnX + btnW + 20, btnY + 10, 90, 28, true, new Color(90, 90, 90),
+            new Font("SansSerif", Font.PLAIN, 12), app::onAbandonRun);
 
-        // Piece shop section
-        int pieceY = 80;
-        g.setFont(new Font("Serif", Font.BOLD, 20));
-        g.setColor(CRIMSON_DIM);
-        g.drawString("PIECES", 40, pieceY);
-        drawPieceShop(g, 40, pieceY + 10, w - 220);
-
-        // Card shop section
-        int cardY = 260;
-        g.setFont(new Font("Serif", Font.BOLD, 20));
-        g.setColor(CRIMSON_DIM);
-        g.drawString("CARDS", 40, cardY);
-        drawCardShop(g, 40, cardY + 10, w - 220, s);
-
-        // Continue button
-        int btnW = 260, btnH = 48;
-        int btnX = (w - 220) / 2 - btnW / 2 + 20, btnY = h - 70;
-        drawButton(g, "CONTINUE TO NEXT ROUND", btnX, btnY, btnW, btnH, CRIMSON);
-
-        // Draft overlay
-        if (showingDraft) drawDraftOverlay(g, w, h, s);
+        if (showingDraft) drawDraftOverlay(g, w, h);
     }
 
-    private void drawPieceShop(Graphics2D g, int x, int y, int maxW) {
-        String[] items = {"Pawn", "Knight", "Bishop", "Rook", "Queen"};
-        Map<String, Integer> prices = shop.getPrices();
-        Map<String, Integer> counts = shop.getPieceCounts();
-        int cardW = 110, cardH = 100, gap = 12;
+    private void drawRequirement(Graphics2D g, int level) {
+        ShopManager shop = shop();
+        int have = shop.armyMaterial(), need = Economy.requirement(level);
+        g.setFont(new Font("SansSerif", Font.BOLD, 15));
+        g.setColor(have >= need ? GOOD : CRIMSON);
+        g.drawString(String.format("Level %d needs %d material. Your army: %d%s", level, need, have,
+            have >= need ? "  ✔" : "  (need " + (need - have) + " more)"), 30, 72);
+        g.setFont(new Font("SansSerif", Font.PLAIN, 13));
+        g.setColor(TEXT_DIM);
+        g.drawString(String.format("Pawns %d / %d allowed  ·  AI depth %d  ·  Best level beaten: %d",
+            shop.count("Pawn"), shop.pawnCap(), Difficulty.forLevel(level).searchDepth,
+            run().getHighestLevelBeaten()), 30, 92);
+    }
 
-        for (int i = 0; i < items.length; i++) {
-            String it = items[i];
-            int cx = x + i * (cardW + gap), cy = y;
+    private void drawPieceShop(Graphics2D g, int x, int y) {
+        g.setFont(new Font("Serif", Font.BOLD, 18));
+        g.setColor(CRIMSON_DIM);
+        g.drawString("PIECES", x, y);
+        int cardW = 118, cardH = 150, gap = 12;
+        for (int i = 0; i < Economy.PIECE_TYPES.length; i++) {
+            String type = Economy.PIECE_TYPES[i];
+            int cx = x + i * (cardW + gap), cy = y + 10;
+            int price = Economy.piecePrice(type);
+            int owned = shop().count(type);
             g.setColor(CARD_BG);
             g.fillRoundRect(cx, cy, cardW, cardH, 8, 8);
             g.setColor(CARD_BORDER);
             g.drawRoundRect(cx, cy, cardW, cardH, 8, 8);
 
             g.setColor(Color.WHITE);
-            g.setFont(new Font("Serif", Font.BOLD, 14));
-            drawCenteredString(g, it, cx + cardW/2, cy + 25);
-            g.setColor(GOLD_COLOR);
+            g.setFont(new Font("Serif", Font.BOLD, 15));
+            centered(g, type, cx + cardW / 2, cy + 22);
             g.setFont(new Font("SansSerif", Font.PLAIN, 12));
-            drawCenteredString(g, prices.get(it) + " gold", cx + cardW/2, cy + 45);
             g.setColor(TEXT_DIM);
-            drawCenteredString(g, "Owned: " + counts.getOrDefault(it, 0), cx + cardW/2, cy + 62);
+            centered(g, Economy.material(createSample(type)) + " material", cx + cardW / 2, cy + 40);
+            g.setColor(GOLD_COLOR);
+            centered(g, price + " gold", cx + cardW / 2, cy + 57);
+            g.setColor(TEXT_DIM);
+            centered(g, "Owned: " + owned, cx + cardW / 2, cy + 74);
 
-            // Buy button
-            g.setColor(BTN_BG);
-            g.fillRoundRect(cx + 15, cy + 72, cardW - 30, 22, 6, 6);
-            g.setColor(CRIMSON);
-            g.drawRoundRect(cx + 15, cy + 72, cardW - 30, 22, 6, 6);
-            g.setColor(Color.WHITE);
-            g.setFont(new Font("SansSerif", Font.BOLD, 11));
-            drawCenteredString(g, "BUY", cx + cardW/2, cy + 87);
+            button(g, "BUY", cx + 14, cy + 86, cardW - 28, 24, shop().getGold() >= price, CRIMSON,
+                new Font("SansSerif", Font.BOLD, 11), () -> act(shop().buyPiece(type), "Bought a " + type + "."));
+            button(g, "SELL +" + Economy.sellPrice(price), cx + 14, cy + 116, cardW - 28, 24, owned > 0,
+                new Color(120, 100, 60), new Font("SansSerif", Font.BOLD, 11),
+                () -> act(shop().sellPiece(type), "Sold a " + type + "."));
         }
     }
 
-    private void drawCardShop(Graphics2D g, int x, int y, int maxW, GameState state) {
-        List<Card> faceUp = shop.getFaceUpCards();
-        int cardW = 170, cardH = 180, gap = 15;
-
-        // Face-up cards
+    private void drawCardShop(Graphics2D g, int x, int y, int level) {
+        g.setFont(new Font("Serif", Font.BOLD, 18));
+        g.setColor(CRIMSON_DIM);
+        g.drawString("CARDS", x, y);
+        List<Card> faceUp = shop().getFaceUpCards();
+        int cardW = 150, cardH = 190, gap = 12, cy = y + 10;
         for (int i = 0; i < faceUp.size(); i++) {
             Card card = faceUp.get(i);
-            int cx = x + i * (cardW + gap), cy = y;
-            drawCardPanel(g, card, cx, cy, cardW, cardH, shop.getFaceUpCardCost(card), false);
+            int cx = x + i * (cardW + gap);
+            int price = Economy.faceUpCardPrice(card);
+            drawCardPanel(g, card, cx, cy, cardW, cardH);
+            g.setColor(GOLD_COLOR);
+            g.setFont(new Font("SansSerif", Font.BOLD, 12));
+            centered(g, price + " gold", cx + cardW / 2, cy + cardH - 36);
+            button(g, "BUY", cx + 20, cy + cardH - 28, cardW - 40, 22, shop().getGold() >= price, CRIMSON,
+                new Font("SansSerif", Font.BOLD, 11), () -> act(shop().buyFaceUpCard(card), "Bought " + card.getName() + "."));
         }
 
-        // Mystery pack
-        int packX = x + faceUp.size() * (cardW + gap) + 10;
-        int packH = 180;
+        int packX = x + faceUp.size() * (cardW + gap);
         g.setColor(new Color(20, 15, 35));
-        g.fillRoundRect(packX, y, cardW, packH, 10, 10);
-
-        // Gradient border for mystery
+        g.fillRoundRect(packX, cy, cardW, cardH, 10, 10);
         g.setStroke(new BasicStroke(2));
         g.setColor(new Color(100, 50, 150));
-        g.drawRoundRect(packX, y, cardW, packH, 10, 10);
+        g.drawRoundRect(packX, cy, cardW, cardH, 10, 10);
         g.setStroke(new BasicStroke(1));
-
         g.setColor(new Color(150, 100, 200));
         g.setFont(new Font("Serif", Font.BOLD | Font.ITALIC, 16));
-        drawCenteredString(g, "MYSTERY", packX + cardW/2, y + 50);
-        drawCenteredString(g, "BOOSTER", packX + cardW/2, y + 72);
-        drawCenteredString(g, "PACK", packX + cardW/2, y + 94);
-
-        int packCost = state.cardManager.getMysteryPackCost(state.roundNumber);
+        centered(g, "MYSTERY", packX + cardW / 2, cy + 50);
+        centered(g, "PACK", packX + cardW / 2, cy + 72);
+        int packPrice = Economy.mysteryPackPrice(level);
         g.setColor(GOLD_COLOR);
         g.setFont(new Font("SansSerif", Font.PLAIN, 13));
-        drawCenteredString(g, packCost + " gold", packX + cardW/2, y + 120);
+        centered(g, packPrice + " gold", packX + cardW / 2, cy + 110);
         g.setColor(TEXT_DIM);
         g.setFont(new Font("SansSerif", Font.ITALIC, 10));
-        drawCenteredString(g, "Draft 1 of 3 cards", packX + cardW/2, y + 138);
+        centered(g, "Draft 1 of 3 cards", packX + cardW / 2, cy + 128);
+        boolean canOpen = !shop().isMysteryPackOpened() && !shop().getMysteryPackCards().isEmpty()
+            && shop().getGold() >= packPrice;
+        button(g, shop().isMysteryPackOpened() ? "OPENED" : "OPEN", packX + 20, cy + cardH - 28, cardW - 40, 22,
+            canOpen, new Color(100, 50, 150), new Font("SansSerif", Font.BOLD, 11), () -> {
+                ShopManager.Result r = shop().openMysteryPack(level);
+                act(r, "Pick one card.");
+                if (r == ShopManager.Result.OK) showingDraft = true;
+            });
+    }
 
-        if (!shop.isMysteryPackPurchased()) {
-            g.setColor(BTN_BG); g.fillRoundRect(packX+25, y+150, cardW-50, 24, 6, 6);
-            g.setColor(new Color(100, 50, 150)); g.drawRoundRect(packX+25, y+150, cardW-50, 24, 6, 6);
-            g.setColor(Color.WHITE); g.setFont(new Font("SansSerif", Font.BOLD, 11));
-            drawCenteredString(g, "OPEN", packX + cardW/2, y + 166);
-        } else {
-            g.setColor(TEXT_DIM); g.setFont(new Font("SansSerif", Font.ITALIC, 11));
-            drawCenteredString(g, "OPENED", packX + cardW/2, y + 166);
+    private void drawOwnedCards(Graphics2D g, int sx, int sy, int sh) {
+        int sideW = 190;
+        g.setColor(new Color(15, 12, 20, 200));
+        g.fillRoundRect(sx, sy, sideW, sh, 8, 8);
+        g.setColor(CARD_BORDER);
+        g.drawRoundRect(sx, sy, sideW, sh, 8, 8);
+        g.setColor(CRIMSON_DIM);
+        g.setFont(new Font("Serif", Font.BOLD, 14));
+        centered(g, "YOUR CARDS", sx + sideW / 2, sy + 20);
+
+        List<Card> owned = shop().getCards().getActiveCards();
+        if (owned.isEmpty()) {
+            g.setColor(TEXT_DIM);
+            g.setFont(new Font("SansSerif", Font.PLAIN, 11));
+            g.drawString("No cards yet", sx + 50, sy + 48);
+        }
+        for (int i = 0; i < owned.size() && i < 16; i++) {
+            Card c = new ArrayList<>(owned).get(i);
+            int ry = sy + 36 + i * 26;
+            g.setFont(new Font("SansSerif", Font.PLAIN, 11));
+            g.setColor(c.isGlobal() ? new Color(180, 140, 40) : new Color(80, 160, 220));
+            g.drawString(c.getName(), sx + 8, ry + 14);
+            button(g, "+" + Economy.cardSellPrice(c), sx + sideW - 46, ry, 38, 20, true, new Color(120, 100, 60),
+                new Font("SansSerif", Font.BOLD, 10), () -> act(shop().sellCard(c), "Sold " + c.getName() + "."));
         }
     }
 
-    private void drawCardPanel(Graphics2D g, Card card, int x, int y, int w, int h, int cost, boolean isDraft) {
+    private void drawCardPanel(Graphics2D g, Card card, int x, int y, int w, int h) {
         g.setColor(CARD_BG);
         g.fillRoundRect(x, y, w, h, 10, 10);
         g.setColor(card.isGlobal() ? new Color(80, 60, 30) : CARD_BORDER);
         g.setStroke(new BasicStroke(2));
         g.drawRoundRect(x, y, w, h, 10, 10);
         g.setStroke(new BasicStroke(1));
-
-        // Type badge
         g.setColor(card.isGlobal() ? new Color(180, 140, 40) : new Color(40, 120, 180));
         g.setFont(new Font("SansSerif", Font.BOLD, 9));
-        drawCenteredString(g, card.isGlobal() ? "GLOBAL" : "LOCAL", x + w/2, y + 16);
-
-        // Name
+        centered(g, card.isGlobal() ? "GLOBAL" : "LOCAL", x + w / 2, y + 16);
         g.setColor(Color.WHITE);
         g.setFont(new Font("Serif", Font.BOLD, 13));
-        drawCenteredString(g, card.getName(), x + w/2, y + 38);
-
-        // Description (wrapped)
+        centered(g, card.getName(), x + w / 2, y + 36);
         g.setColor(TEXT_DIM);
         g.setFont(new Font("SansSerif", Font.PLAIN, 10));
-        drawWrappedText(g, card.getDescription(), x + 8, y + 52, w - 16, 12);
-
-        // Cost
-        g.setColor(GOLD_COLOR);
-        g.setFont(new Font("SansSerif", Font.BOLD, 12));
-        drawCenteredString(g, cost + " gold", x + w/2, y + h - 35);
-
-        // Buy button
-        g.setColor(BTN_BG); g.fillRoundRect(x+20, y+h-28, w-40, 22, 6, 6);
-        g.setColor(CRIMSON); g.drawRoundRect(x+20, y+h-28, w-40, 22, 6, 6);
-        g.setColor(Color.WHITE); g.setFont(new Font("SansSerif", Font.BOLD, 11));
-        drawCenteredString(g, isDraft ? "DRAFT" : "BUY", x + w/2, y + h - 13);
+        wrapped(g, card.getDescription(), x + 8, y + 52, w - 16, 12);
     }
 
-    private void drawActiveCards(Graphics2D g, int w, int h, GameState s) {
-        int sideW = 180, sx = w - sideW - 10, sy = 60;
-        g.setColor(new Color(15, 12, 20, 200));
-        g.fillRoundRect(sx, sy, sideW, h - 140, 8, 8);
-        g.setColor(CARD_BORDER); g.drawRoundRect(sx, sy, sideW, h - 140, 8, 8);
-
-        g.setColor(CRIMSON_DIM); g.setFont(new Font("Serif", Font.BOLD, 14));
-        drawCenteredString(g, "ACTIVE CARDS", sx + sideW/2, sy + 20);
-
-        List<Card> active = s.cardManager.getActiveCards();
-        g.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        for (int i = 0; i < active.size() && i < 15; i++) {
-            Card c = active.get(i);
-            g.setColor(c.isGlobal() ? new Color(180, 140, 40) : new Color(80, 160, 220));
-            g.drawString("• " + c.getName(), sx + 10, sy + 42 + i * 18);
-        }
-        if (active.isEmpty()) {
-            g.setColor(TEXT_DIM);
-            g.drawString("No cards yet", sx + 30, sy + 50);
-        }
-    }
-
-    private void drawDraftOverlay(Graphics2D g, int w, int h, GameState state) {
-        g.setColor(new Color(0, 0, 0, 180));
+    private void drawDraftOverlay(Graphics2D g, int w, int h) {
+        buttons.clear(); // only the overlay is clickable
+        g.setColor(new Color(0, 0, 0, 190));
         g.fillRect(0, 0, w, h);
-
-        g.setColor(new Color(100, 50, 150));
+        g.setColor(new Color(150, 100, 200));
         g.setFont(new Font("Serif", Font.BOLD, 28));
-        drawCenteredString(g, "— CHOOSE YOUR CARD —", w/2, 80);
-        g.setColor(TEXT_DIM); g.setFont(new Font("SansSerif", Font.ITALIC, 14));
-        drawCenteredString(g, "Pick 1 card to keep, or close to skip", w/2, 110);
+        centered(g, "— CHOOSE YOUR CARD —", w / 2, 80);
+        g.setColor(TEXT_DIM);
+        g.setFont(new Font("SansSerif", Font.ITALIC, 14));
+        centered(g, "Pick 1 card to keep, or skip", w / 2, 110);
 
-        int cardW = 180, cardH = 200, gap = 20;
-        int totalW = draftCards.size() * cardW + (draftCards.size()-1) * gap;
-        int startX = (w - totalW) / 2;
-        for (int i = 0; i < draftCards.size(); i++) {
-            drawCardPanel(g, draftCards.get(i), startX + i*(cardW+gap), 140, cardW, cardH, 0, true);
+        List<Card> draft = new ArrayList<>(shop().getMysteryPackCards());
+        int cardW = 180, cardH = 210, gap = 20;
+        int startX = (w - (draft.size() * cardW + Math.max(0, draft.size() - 1) * gap)) / 2;
+        for (int i = 0; i < draft.size(); i++) {
+            Card card = draft.get(i);
+            int cx = startX + i * (cardW + gap);
+            drawCardPanel(g, card, cx, 140, cardW, cardH);
+            button(g, "TAKE", cx + 20, 140 + cardH - 30, cardW - 40, 24, true, new Color(100, 50, 150),
+                new Font("SansSerif", Font.BOLD, 11), () -> {
+                    act(shop().draftMysteryCard(card), "Took " + card.getName() + ".");
+                    showingDraft = false;
+                });
         }
-
-        // Skip button
-        drawButton(g, "SKIP", w/2 - 60, 360, 120, 36, new Color(80, 80, 80));
+        button(g, "SKIP", w / 2 - 60, 380, 120, 34, true, new Color(80, 80, 80),
+            new Font("Serif", Font.BOLD, 14), () -> {
+                showingDraft = false;
+                status = "Skipped the pack.";
+            });
     }
 
-    private void drawButton(Graphics2D g, String text, int x, int y, int w, int h, Color accent) {
-        g.setColor(BTN_BG); g.fillRoundRect(x, y, w, h, 8, 8);
-        g.setColor(accent); g.setStroke(new BasicStroke(2));
-        g.drawRoundRect(x, y, w, h, 8, 8); g.setStroke(new BasicStroke(1));
-        g.setColor(Color.WHITE); g.setFont(new Font("Serif", Font.BOLD, 16));
-        drawCenteredString(g, text, x + w/2, y + h/2 + 6);
-    }
+    // ─── DRAWING HELPERS ────────────────────────────────────────
 
-    private void handleClick(int mx, int my) {
-        GameState s = getEngine().getGameState();
-        int w = getWidth(), h = getHeight();
-
-        if (showingDraft) {
-            int cardW = 180, cardH = 200, gap = 20;
-            int totalW = draftCards.size() * cardW + (draftCards.size()-1) * gap;
-            int startX = (w - totalW) / 2;
-            for (int i = 0; i < draftCards.size(); i++) {
-                int cx = startX + i*(cardW+gap), cy = 140;
-                if (mx >= cx+20 && mx <= cx+cardW-20 && my >= cy+cardH-28 && my <= cy+cardH-6) {
-                    if (shop.draftMysteryCard(draftCards.get(i), s)) {
-                        AudioPlayer.playMoveSound();
-                        showingDraft = false;
-                    }
-                    repaint(); return;
-                }
-            }
-            // Skip button
-            if (mx >= w/2-60 && mx <= w/2+60 && my >= 360 && my <= 396) {
-                showingDraft = false; repaint(); return;
-            }
-            return;
-        }
-
-        // Piece buy buttons
-        String[] items = {"Pawn", "Knight", "Bishop", "Rook", "Queen"};
-        int cardW2 = 110, gap2 = 12;
-        for (int i = 0; i < items.length; i++) {
-            int cx = 40 + i * (cardW2 + gap2), cy = 90;
-            if (mx >= cx+15 && mx <= cx+cardW2-15 && my >= cy+72 && my <= cy+94) {
-                if (shop.purchase(getEngine(), items[i])) AudioPlayer.playMoveSound();
-                repaint(); return;
-            }
-        }
-
-        // Face-up card buy buttons
-        List<Card> faceUp = shop.getFaceUpCards();
-        int cardW3 = 170, cardH3 = 180, gap3 = 15;
-        for (int i = 0; i < faceUp.size(); i++) {
-            int cx = 40 + i * (cardW3 + gap3), cy = 270;
-            if (mx >= cx+20 && mx <= cx+cardW3-20 && my >= cy+cardH3-28 && my <= cy+cardH3-6) {
-                if (shop.purchaseFaceUpCard(faceUp.get(i), s)) AudioPlayer.playMoveSound();
-                repaint(); return;
-            }
-        }
-
-        // Mystery pack button
-        int packX = 40 + faceUp.size() * (cardW3 + gap3) + 10;
-        if (mx >= packX+25 && mx <= packX+cardW3-25 && my >= 420 && my <= 444) {
-            if (!shop.isMysteryPackPurchased() && shop.purchaseMysteryPack(s, s.roundNumber)) {
-                AudioPlayer.playMoveSound();
-                draftCards = new ArrayList<>(shop.getMysteryPackCards());
-                showingDraft = true;
-            }
-            repaint(); return;
-        }
-
-        // Continue button
-        int btnW = 260, btnH = 48;
-        int btnX = (w - 220) / 2 - btnW / 2 + 20, btnY = h - 70;
-        if (mx >= btnX && mx <= btnX+btnW && my >= btnY && my <= btnY+btnH) {
-            app.onShoppingComplete();
-        }
-    }
-
-    private void drawCenteredString(Graphics2D g, String s, int cx, int cy) {
+    private void button(Graphics2D g, String text, int x, int y, int w, int h, boolean enabled,
+                        Color accent, Font font, Runnable action) {
+        Rectangle r = new Rectangle(x, y, w, h);
+        boolean hover = enabled && r.contains(mouse);
+        g.setColor(!enabled ? BTN_OFF : hover ? BTN_HOVER : BTN_BG);
+        g.fillRoundRect(x, y, w, h, 6, 6);
+        g.setColor(enabled ? accent : new Color(60, 55, 65));
+        g.setStroke(new BasicStroke(enabled ? 2 : 1));
+        g.drawRoundRect(x, y, w, h, 6, 6);
+        g.setStroke(new BasicStroke(1));
+        g.setColor(enabled ? Color.WHITE : new Color(110, 105, 115));
+        g.setFont(font);
         FontMetrics fm = g.getFontMetrics();
-        g.drawString(s, cx - fm.stringWidth(s)/2, cy);
+        g.drawString(text, x + (w - fm.stringWidth(text)) / 2, y + (h + fm.getAscent() - fm.getDescent()) / 2);
+        buttons.add(new Button(r, enabled, action));
     }
 
-    private void drawWrappedText(Graphics2D g, String text, int x, int y, int maxW, int lineH) {
+    private static Piece createSample(String type) {
+        switch (type) {
+            case "Pawn": return new Pawn(true);
+            case "Knight": return new Knight(true);
+            case "Bishop": return new Bishop(true);
+            case "Rook": return new Rook(true);
+            default: return new Queen(true);
+        }
+    }
+
+    private void centered(Graphics2D g, String s, int cx, int cy) {
         FontMetrics fm = g.getFontMetrics();
-        String[] words = text.split(" ");
+        g.drawString(s, cx - fm.stringWidth(s) / 2, cy);
+    }
+
+    private void wrapped(Graphics2D g, String text, int x, int y, int maxW, int lineH) {
+        FontMetrics fm = g.getFontMetrics();
         StringBuilder line = new StringBuilder();
         int cy = y;
-        for (String word : words) {
-            if (fm.stringWidth(line + " " + word) > maxW && line.length() > 0) {
+        for (String word : text.split(" ")) {
+            if (line.length() > 0 && fm.stringWidth(line + " " + word) > maxW) {
                 g.drawString(line.toString(), x, cy);
                 line = new StringBuilder(word);
                 cy += lineH;
             } else {
-                if (line.length() > 0) line.append(" ");
+                if (line.length() > 0) line.append(' ');
                 line.append(word);
             }
         }
         if (line.length() > 0) g.drawString(line.toString(), x, cy);
     }
-
-    public void refresh() { repaint(); }
 }

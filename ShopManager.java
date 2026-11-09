@@ -1,294 +1,240 @@
-
-
-import javax.swing.JOptionPane;
 import java.util.*;
 
+/**
+ * The shop and everything the player owns between rounds: army, coins and cards.
+ * Pure game logic: no Swing. Every action returns a Result the UI turns into a message.
+ */
 public class ShopManager {
-    private final Map<String, Integer> prices = new HashMap<>();
-    private final List<Piece> nextRound = new ArrayList<>();
-    private int savedGold = 0;
 
-    private static final int MAX_PAWNS          = 8;
-    private static final int MAX_QUEENS         = 3;
-    private static final int MAX_NON_PAWN_TOTAL = 7;
-    private static final int FREE_PAWNS         = 2;
+    public enum Result {
+        OK("Done."),
+        NOT_ENOUGH_GOLD("Not enough gold."),
+        PAWN_CAP("Pawn limit reached: buy a Knight, Bishop, Rook or Queen first."),
+        NO_ROOM("No room: the back rank holds at most 7 pieces besides the King."),
+        NOT_OWNED("You don't own one of those."),
+        ALREADY_OPENED("You already opened a pack this visit."),
+        NOT_OFFERED("That card isn't on offer.");
 
-    // ─── CARD OFFERING STATE ────────────────────────────────────
-    private List<Card> currentFaceUpCards = new ArrayList<>();
-    private List<Card> currentMysteryPack = new ArrayList<>();
-    private boolean mysteryPackPurchased = false;
+        public final String message;
+
+        Result(String message) {
+            this.message = message;
+        }
+    }
+
+    /** Your pieces (White, King not included). They start each round on the board for free. */
+    private final List<Piece> army = new ArrayList<>();
+    private int gold;
+    /** Cards you own. */
+    private CardManager cards = new CardManager();
+
+    private List<Card> faceUpCards = new ArrayList<>();
+    private List<Card> mysteryPack = new ArrayList<>();
+    private boolean mysteryPackOpened;
 
     public ShopManager() {
-        prices.put("Pawn",    5);
-        prices.put("Knight", 15);
-        prices.put("Bishop", 15);
-        prices.put("Rook",   25);
-        prices.put("Queen",  45);
-
-        initializeFreePawns();
+        resetForNewRun();
     }
 
-    public void saveGoldForNextGame(int gold)   
-    { 
-        this.savedGold = gold;
-    }
-
-    public int  getGoldFromPreviousGame()       
-    { 
-        return savedGold;
-    }
-
-    /** Clears everything carried over from a previous run: army, saved gold, card offers. */
+    /** A new run starts with King + 2 Pawns, no gold, no cards. */
     public void resetForNewRun() {
-        savedGold = 0;
-        currentFaceUpCards = new ArrayList<>();
-        currentMysteryPack = new ArrayList<>();
-        mysteryPackPurchased = false;
-        initializeFreePawns();
+        army.clear();
+        army.add(new Pawn(true));
+        army.add(new Pawn(true));
+        gold = 0;
+        cards = new CardManager();
+        faceUpCards = new ArrayList<>();
+        mysteryPack = new ArrayList<>();
+        mysteryPackOpened = false;
     }
 
-    private void initializeFreePawns() {
-        nextRound.clear();
-        for (int i = 0; i < FREE_PAWNS; i++) {
-            nextRound.add(new Pawn(true));
-        }
-        System.out.println("Initialized with " + FREE_PAWNS + " free pawns");
+    // ─── GOLD AND ARMY ──────────────────────────────────────────
+
+    public int getGold() { return gold; }
+
+    public void setGold(int gold) { this.gold = Math.max(0, gold); }
+
+    public CardManager getCards() { return cards; }
+
+    /** Copies of the army's pieces, ready to place on a board. */
+    public List<Piece> getArmy() {
+        List<Piece> copy = new ArrayList<>();
+        for (Piece p : army) copy.add(p.clone());
+        return copy;
     }
 
-    public void loadSurvivingPieces(GameState state) {
-        System.out.println("=== LOADING SURVIVING PIECES ===");
-
-        nextRound.clear();
-
-        int survivingPawns = 0;
-        List<Piece> survivors = new ArrayList<>();
-
+    /** Replaces the army with the White pieces (except the King) left on a board. */
+    public void setArmyFromBoard(GameState state) {
+        army.clear();
         for (int r = 0; r < 8; r++) {
             for (int c = 0; c < 8; c++) {
                 Piece p = state.board[r][c];
-                if (p != null && p.isWhite() && !(p instanceof King)) {
-                    survivors.add(p.clone());
-                    if (p instanceof Pawn) survivingPawns++;
-                    System.out.println("  Survived: " + p.getName() + " at (" + r + "," + c + ")");
+                if (p != null && p.isWhite() && !(p instanceof King)) army.add(p.clone());
+            }
+        }
+    }
+
+    /** After a loss only the King remains. */
+    public void clearArmy() {
+        army.clear();
+    }
+
+    public int armyMaterial() {
+        return Economy.material(army);
+    }
+
+    public int count(String type) {
+        int n = 0;
+        for (Piece p : army) if (typeOf(p).equals(type)) n++;
+        return n;
+    }
+
+    public int pawnCap() {
+        return Economy.pawnCap(count("Knight") + count("Bishop") + count("Rook"), count("Queen"));
+    }
+
+    private int nonPawnCount() {
+        return army.size() - count("Pawn");
+    }
+
+    public boolean meetsRequirement(int level) {
+        return armyMaterial() >= Economy.requirement(level);
+    }
+
+    // ─── BUYING AND SELLING PIECES ──────────────────────────────
+
+    public Result buyPiece(String type) {
+        int price = Economy.piecePrice(type);
+        if (gold < price) return Result.NOT_ENOUGH_GOLD;
+        if (type.equals("Pawn")) {
+            if (count("Pawn") >= pawnCap()) return Result.PAWN_CAP;
+        } else if (nonPawnCount() >= Economy.MAX_NON_PAWNS) {
+            return Result.NO_ROOM;
+        }
+        gold -= price;
+        army.add(create(type));
+        return Result.OK;
+    }
+
+    public Result sellPiece(String type) {
+        for (Iterator<Piece> it = army.iterator(); it.hasNext(); ) {
+            if (typeOf(it.next()).equals(type)) {
+                it.remove();
+                gold += Economy.sellPrice(Economy.piecePrice(type));
+                return Result.OK;
+            }
+        }
+        return Result.NOT_OWNED;
+    }
+
+    // ─── CARDS ──────────────────────────────────────────────────
+
+    /** Rolls this shop visit's offers: 3 face-up cards and a separate 3-card mystery pack. */
+    public void generateCardOfferings(int level, Random rng) {
+        List<Card> available = cards.availableCards();
+        Collections.shuffle(available, rng);
+        int faceUp = Math.min(3, available.size());
+        faceUpCards = new ArrayList<>(available.subList(0, faceUp));
+        mysteryPack = new ArrayList<>(available.subList(faceUp, Math.min(faceUp + 3, available.size())));
+        mysteryPackOpened = false;
+    }
+
+    public List<Card> getFaceUpCards() { return Collections.unmodifiableList(faceUpCards); }
+
+    public List<Card> getMysteryPackCards() { return Collections.unmodifiableList(mysteryPack); }
+
+    public boolean isMysteryPackOpened() { return mysteryPackOpened; }
+
+    public Result buyFaceUpCard(Card card) {
+        if (!faceUpCards.contains(card)) return Result.NOT_OFFERED;
+        int price = Economy.faceUpCardPrice(card);
+        if (gold < price) return Result.NOT_ENOUGH_GOLD;
+        gold -= price;
+        cards.addCard(card);
+        faceUpCards.remove(card);
+        return Result.OK;
+    }
+
+    /** Pays for the mystery pack; the player then drafts one of its cards. */
+    public Result openMysteryPack(int level) {
+        if (mysteryPackOpened) return Result.ALREADY_OPENED;
+        if (mysteryPack.isEmpty()) return Result.NOT_OFFERED;
+        int price = Economy.mysteryPackPrice(level);
+        if (gold < price) return Result.NOT_ENOUGH_GOLD;
+        gold -= price;
+        mysteryPackOpened = true;
+        return Result.OK;
+    }
+
+    public Result draftMysteryCard(Card card) {
+        if (!mysteryPackOpened || !mysteryPack.contains(card)) return Result.NOT_OFFERED;
+        cards.addCard(card);
+        mysteryPack.clear();
+        return Result.OK;
+    }
+
+    public Result sellCard(Card card) {
+        if (!cards.removeCard(card)) return Result.NOT_OWNED;
+        gold += Economy.cardSellPrice(card);
+        return Result.OK;
+    }
+
+    // ─── GAME OVER CHECK ────────────────────────────────────────
+
+    /**
+     * True if the player can still reach the level's requirement: by buying pieces with their
+     * gold, plus whatever they'd get for selling all their cards. Selling pieces never helps,
+     * since it loses more material than the refund buys back.
+     */
+    public boolean canStillReach(int level) {
+        int needed = Economy.requirement(level) - armyMaterial();
+        if (needed <= 0) return true;
+        int budget = gold;
+        for (Card c : cards.getActiveCards()) budget += Economy.cardSellPrice(c);
+        return maxAffordableMaterial(budget) >= needed;
+    }
+
+    /** Most material that can be added with the budget, respecting the pawn cap and back-rank room. */
+    int maxAffordableMaterial(int budget) {
+        int minors = count("Knight") + count("Bishop") + count("Rook");
+        int queens = count("Queen");
+        int pawns = count("Pawn");
+        int room = Economy.MAX_NON_PAWNS - nonPawnCount();
+        int best = 0;
+        for (int q = 0; q <= room; q++) {
+            for (int r = 0; q + r <= room; r++) {
+                for (int m = 0; q + r + m <= room; m++) { // knights/bishops
+                    int cost = q * 45 + r * 25 + m * 15;
+                    if (cost > budget) break;
+                    int cap = Economy.pawnCap(minors + r + m, queens + q);
+                    int extraPawns = Math.max(0, Math.min(cap, Economy.MAX_PAWNS) - pawns);
+                    extraPawns = Math.min(extraPawns, (budget - cost) / Economy.piecePrice("Pawn"));
+                    best = Math.max(best, q * 9 + r * 5 + m * 3 + extraPawns);
                 }
             }
         }
+        return best;
+    }
 
-        int pawnsNeeded = Math.max(0, FREE_PAWNS - survivingPawns);
-        System.out.println("Surviving pawns: " + survivingPawns + ", need to add: " + pawnsNeeded);
+    // ─── HELPERS ────────────────────────────────────────────────
 
-        for (int i = 0; i < pawnsNeeded; i++) {
-            nextRound.add(new Pawn(true));
-            System.out.println("  Added FREE pawn #" + (i + 1));
+    public static String typeOf(Piece p) {
+        if (p instanceof Pawn) return "Pawn";
+        if (p instanceof Knight) return "Knight";
+        if (p instanceof Bishop) return "Bishop";
+        if (p instanceof Rook) return "Rook";
+        if (p instanceof Queen) return "Queen";
+        return "King";
+    }
+
+    private static Piece create(String type) {
+        switch (type) {
+            case "Pawn":   return new Pawn(true);
+            case "Knight": return new Knight(true);
+            case "Bishop": return new Bishop(true);
+            case "Rook":   return new Rook(true);
+            case "Queen":  return new Queen(true);
+            default: throw new IllegalArgumentException("Unknown piece type: " + type);
         }
-
-        for (Piece p : survivors) {
-            if (canAddPiece(p)) {
-                nextRound.add(p);
-            } else {
-                System.out.println("  CAPPED: " + p.getName() + " (reached maximum)");
-            }
-        }
-
-        System.out.println("Total pieces loaded: " + nextRound.size());
-    }
-
-    /** Central cap-check – used both for surviving pieces and for purchases */
-    private boolean canAddPiece(Piece p) {
-        if (p instanceof Pawn)    return count(Pawn.class)    < MAX_PAWNS;
-        if (p instanceof Queen)   return count(Queen.class)   < MAX_QUEENS;
-        if (nonPawnCount() >= MAX_NON_PAWN_TOTAL) return false;
-        return true;
-    }
-
-    public boolean purchase(ChessEngine engine, String type) {
-        GameState s = engine.getGameState();
-        int cost = prices.getOrDefault(type, 999);
-        if (s.goldPlayer < cost) {
-            System.out.println("Not enough gold for " + type + " (need " + cost + ", have " + s.goldPlayer + ")");
-            return false;
-        }
-
-        int pawns = count(Pawn.class);
-        if (!type.equals("Pawn")) {
-            if (!unlockAllowed(pawns, type)) {
-                JOptionPane.showMessageDialog(null,
-                    "Need at least " + getRequiredPawns(type) + " pawns to unlock " + type + "!\nYou have: " + pawns,
-                    "Shop", JOptionPane.WARNING_MESSAGE);
-                return false;
-            }
-        }
-
-        Piece dummy = create(type, true);
-        if (!canAddPiece(dummy)) {
-            JOptionPane.showMessageDialog(null,
-                "Maximum limit reached for " + type + "!", "Shop",
-                JOptionPane.WARNING_MESSAGE);
-            return false;
-        }
-
-        s.goldPlayer -= cost;
-        nextRound.add(dummy);
-        System.out.println("Purchased: " + type + " (cost: " + cost + ", remaining gold: " + s.goldPlayer + ")");
-        System.out.println("Current nextRound size: " + nextRound.size());
-        return true;
-    }
-
-    // ─── CARD SHOP METHODS ──────────────────────────────────────
-
-    /**
-     * Generate the card offerings for this shop visit.
-     */
-    public void generateCardOfferings(CardManager cardManager, int roundNumber) {
-        Random rng = new Random(roundNumber * 997L + System.nanoTime());
-        currentFaceUpCards = cardManager.generateFaceUpOffering(roundNumber, rng);
-        currentMysteryPack = cardManager.generateMysteryPack(roundNumber, new Random(rng.nextLong()));
-        mysteryPackPurchased = false;
-        System.out.println("Shop: Generated " + currentFaceUpCards.size() + " face-up cards, " +
-                           currentMysteryPack.size() + " mystery pack cards");
-    }
-
-    public List<Card> getFaceUpCards() {
-        return Collections.unmodifiableList(currentFaceUpCards);
-    }
-
-    public List<Card> getMysteryPackCards() {
-        return Collections.unmodifiableList(currentMysteryPack);
-    }
-
-    public boolean isMysteryPackPurchased() {
-        return mysteryPackPurchased;
-    }
-
-    /**
-     * Purchase a face-up card at its full (premium) cost.
-     */
-    public boolean purchaseFaceUpCard(Card card, GameState state) {
-        int premiumCost = (int)(card.getCost() * 1.5); // 50% premium for face-up
-        if (state.goldPlayer < premiumCost) {
-            System.out.println("Not enough gold for card " + card.getName() +
-                " (need " + premiumCost + ", have " + state.goldPlayer + ")");
-            return false;
-        }
-
-        // Anti-checkmate safeguard
-        if (state.cardManager != null && !state.cardManager.validateCardApplication(card, state)) {
-            System.out.println("Card " + card.getName() + " blocked by anti-checkmate safeguard!");
-            return false;
-        }
-
-        state.goldPlayer -= premiumCost;
-        state.cardManager.addCard(card);
-        currentFaceUpCards.remove(card);
-        System.out.println("Purchased face-up card: " + card.getName() + " for " + premiumCost + " gold");
-        return true;
-    }
-
-    /**
-     * Purchase the mystery pack.
-     * Returns true if purchase succeeded. The draft UI is handled by ShopScene.
-     */
-    public boolean purchaseMysteryPack(GameState state, int roundNumber) {
-        if (mysteryPackPurchased) return false;
-        int cost = state.cardManager.getMysteryPackCost(roundNumber);
-        if (state.goldPlayer < cost) {
-            System.out.println("Not enough gold for mystery pack (need " + cost +
-                ", have " + state.goldPlayer + ")");
-            return false;
-        }
-        state.goldPlayer -= cost;
-        mysteryPackPurchased = true;
-        System.out.println("Purchased mystery pack for " + cost + " gold");
-        return true;
-    }
-
-    /**
-     * Player picks a card from the mystery pack draft.
-     */
-    public boolean draftMysteryCard(Card card, GameState state) {
-        if (!mysteryPackPurchased) return false;
-        if (!currentMysteryPack.contains(card)) return false;
-
-        // Anti-checkmate safeguard
-        if (state.cardManager != null && !state.cardManager.validateCardApplication(card, state)) {
-            System.out.println("Draft card " + card.getName() + " blocked by safeguard!");
-            return false;
-        }
-
-        state.cardManager.addCard(card);
-        currentMysteryPack.clear();
-        System.out.println("Drafted card from mystery pack: " + card.getName());
-        return true;
-    }
-
-    public int getFaceUpCardCost(Card card) {
-        return (int)(card.getCost() * 1.5);
-    }
-
-    // ─── EXISTING METHODS ───────────────────────────────────────
-
-    private boolean unlockAllowed(int pawns, String type) {
-        int required = getRequiredPawns(type);
-        return pawns >= required;
-    }
-
-    private int getRequiredPawns(String type) {
-        return switch (type) {
-            case "Knight", "Bishop", "Queen" -> 4;
-            case "Rook"                     -> 5;
-            default                         -> 0;
-        };
-    }
-
-    private Piece create(String type, boolean white) {
-        return switch (type) {
-            case "Pawn"    -> new Pawn(white);
-            case "Knight"  -> new Knight(white);
-            case "Bishop"  -> new Bishop(white);
-            case "Rook"    -> new Rook(white);
-            case "Queen"   -> new Queen(white);
-            default        -> null;
-        };
-    }
-
-    /** 
-     * Returns all pieces for next round
-     */
-    public List<Piece> collectPurchasedPieces() {
-        System.out.println("=== COLLECTING PIECES ===");
-        System.out.println("Pieces to collect: " + nextRound.size());
-
-        List<Piece> result = new ArrayList<>(nextRound);
-
-        return result;
-    }
-
-    public Map<String, Integer> getPieceCounts() {
-        Map<String, Integer> m = new HashMap<>();
-        m.put("Pawn",    count(Pawn.class));
-        m.put("Knight",  count(Knight.class));
-        m.put("Bishop",  count(Bishop.class));
-        m.put("Rook",    count(Rook.class));
-        m.put("Queen",   count(Queen.class));
-        return m;
-    }
-
-    public Map<String, Integer> getPrices() 
-    { 
-        return new HashMap<>(prices);
-    }
-
-    private <T extends Piece> int count(Class<T> cls) 
-    {
-        int c = 0;
-        for (Piece p : nextRound) 
-            if (cls.isInstance(p))
-                c++;
-        return c;
-    }
-
-    private int nonPawnCount()
-    { 
-        return nextRound.size() - count(Pawn.class);
     }
 }
