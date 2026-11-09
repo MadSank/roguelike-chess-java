@@ -75,7 +75,10 @@ A roguelike chess run against an AI that gets stronger every level. Cards give r
 
 ## Presentation (pre-rendered scenes)
 - A cellar under one hanging lamp. The player sits at a table facing a masked opponent; three hooded dealers stand around the seat: the **card dealer** (left), the **piece dealer** (right) and the **reseller** (behind, right).
-- New Game plays an intro: a bathroom mirror, a corridor, the room, sitting down, leaning over the board. Click to skip.
+- New Game plays an intro (11 s, click to skip):
+  - It fades in from black as the bathroom strip light stutters on. The camera drifts toward a fogged, cracked mirror (a shattered spot and a few long cracks; you can barely see anything in it) while the title "ASHES / of the board" fades in and out (drawn by the game, IntroScene).
+  - You turn, walk down the corridor and into the room, and look at the card dealer and then the piece dealer. Every masked head turns to follow you.
+  - You sit; the opponent lifts a hand toward the board; you lean over it.
 - The shop is the three dealers: the camera turns between them (◀ ▶ or arrow keys) like Buckshot Roulette's fixed views; "Sit down" turns back to the table.
 - Everything is rendered in Blender:
   - `tools/blender/fetch_assets.py` downloads the Poly Haven (CC0) textures and models into `tools/blender/assets/` (local only).

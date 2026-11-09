@@ -75,6 +75,11 @@ public class ScenePlayer {
         return playing != null;
     }
 
+    /** The frame being shown of the clip that's playing (e.g. the intro), or -1 if none is. */
+    public int getClipFrame() {
+        return playing == null ? -1 : frame;
+    }
+
     /**
      * Plays the current view's reaction clip once (e.g. "yes" plays card_yes), then returns to
      * the loop. Ignored while the camera is turning or if the clip wasn't rendered.

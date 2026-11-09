@@ -19,6 +19,7 @@ masked opponent; three masked dealers around the seat (card dealer left, piece d
 reseller behind-right); a corridor and a tiled bathroom for the intro. Real props and textures
 come from Poly Haven (CC0). The figures are stand-in robes with theatre masks (masks.py).
 """
+import bmesh
 import bpy
 import math
 import os
@@ -45,6 +46,8 @@ EYE_SEATED = 1.15
 EYE_STANDING = 1.62
 OPPONENT = Vector((0.0, 1.0, 0.0))
 RIGS = {}  # view name -> the character seen in it (for reactions)
+LIGHTS = {}  # named lights the intro animates
+INTRO_FRAMES = 264
 DEALER_REACTIONS = ["yes", "no"]
 OPPONENT_REACTIONS = ["think", "capture", "hurt", "check", "win", "lose"]
 CARD_DEALER = Vector((-1.55, -0.9, 0.0))
@@ -103,10 +106,11 @@ def build_set():
     kit.plane((0.8, 2.6), (-0.85, -6, 1.3), (P, 0, math.pi), tiles, 1.0)
     kit.plane((0.8, 2.6), (0.85, -6, 1.3), (P, 0, math.pi), tiles, 1.0)
     kit.import_model("ornate_mirror_01", Vector((0, -7.93, 0)), rot_z=0.0, sit_on=1.05)
+    cracked_glass(Vector((0, -7.9325, 0)))  # just in front of the model's own glass
     kit.box((0, -7.72, 0.82), (0.6, 0.42, 0.14), porcelain)
     kit.cyl((0, -7.75, 0.4), 0.08, 0.76, porcelain)
     kit.import_model("mounted_fluorescent_lights", Vector((0, -7.0, 2.55)), scale=0.6)
-    kit.light("AREA", (0, -7.0, 2.5), 22, (0.75, 0.9, 1.0), size=0.8, target=(0, -7.0, 0))
+    LIGHTS["strip"] = kit.light("AREA", (0, -7.0, 2.5), 22, (0.75, 0.9, 1.0), size=0.8, target=(0, -7.0, 0))
     kit.light("POINT", (0, -5.0, 2.3), 5, (0.8, 0.85, 1.0), size=0.2)
 
     # The table, the chess set and the lamp.
@@ -158,6 +162,98 @@ def build_set():
     return sc, top
 
 
+def cracked_glass(at):
+    """The mirror's glass: an arched pane set into the frame, fogged with grime and cracked
+    (a shattered spot where something hit it, and a few long cracks across)."""
+    w, bottom, centre_z = 0.214, 1.075, 1.552  # half width, bottom edge, centre of the arch
+    bm = bmesh.new()
+    pts = [(-w, bottom), (w, bottom), (w, centre_z)]
+    for i in range(1, 24):
+        a = math.pi * i / 24
+        pts.append((w * math.cos(a), centre_z + w * math.sin(a)))
+    pts.append((-w, centre_z))
+    bm.faces.new([bm.verts.new((x, 0, z)) for x, z in pts])
+    me = bpy.data.meshes.new("mirror_glass")
+    bm.to_mesh(me)
+    bm.free()
+    obj = bpy.data.objects.new("mirror_glass", me)
+    obj.location = at
+    bpy.context.collection.objects.link(obj)
+
+    m = bpy.data.materials.new("cracked_mirror")
+    m.use_nodes = True
+    nt = m.node_tree
+    N, L = nt.nodes, nt.links
+    for n in list(N):
+        N.remove(n)
+    out = N.new("ShaderNodeOutputMaterial")
+    coord = N.new("ShaderNodeTexCoord").outputs["Object"]
+
+    def node(kind, **inputs):
+        n = N.new(kind)
+        for k, v in inputs.items():
+            n.inputs[k].default_value = v
+        return n
+
+    def map_range(src, a, b, c, d):
+        n = node("ShaderNodeMapRange")
+        n.inputs[1].default_value, n.inputs[2].default_value = a, b
+        n.inputs[3].default_value, n.inputs[4].default_value = c, d
+        n.clamp = True
+        L.new(src, n.inputs[0])
+        return n.outputs[0]
+
+    def math_op(op, a, b):
+        n = N.new("ShaderNodeMath")
+        n.operation = op
+        for i, v in enumerate((a, b)):
+            if isinstance(v, float):
+                n.inputs[i].default_value = v
+            else:
+                L.new(v, n.inputs[i])
+        return n.outputs[0]
+
+    def voronoi_edges(scale, width):
+        v = N.new("ShaderNodeTexVoronoi")
+        v.feature = "DISTANCE_TO_EDGE"
+        v.inputs["Scale"].default_value = scale
+        L.new(coord, v.inputs["Vector"])
+        return map_range(v.outputs["Distance"], 0.0, width, 1.0, 0.0)
+
+    # Fog: patchy haze that blurs the reflection, and grime that dulls it.
+    fog_tex = node("ShaderNodeTexNoise", Scale=5.0, Detail=6.0)
+    L.new(coord, fog_tex.inputs["Vector"])
+    fog = map_range(fog_tex.outputs["Fac"], 0.35, 0.75, 0.1, 0.38)
+    grime_tex = node("ShaderNodeTexNoise", Scale=11.0, Detail=8.0)
+    L.new(coord, grime_tex.inputs["Vector"])
+    grime = map_range(grime_tex.outputs["Fac"], 0.5, 0.78, 0.0, 0.65)
+    # Cracks: a fine web around the impact point, and a few long cracks over the whole pane.
+    impact = N.new("ShaderNodeVectorMath")
+    impact.operation = "DISTANCE"
+    impact.inputs[1].default_value = (0.07, 0.0, 1.47)
+    L.new(coord, impact.inputs[0])
+    near = map_range(impact.outputs["Value"], 0.02, 0.1, 1.0, 0.0)
+    web = math_op("MULTIPLY", voronoi_edges(34.0, 0.018), near)
+    long_cracks = voronoi_edges(2.6, 0.004)
+    crack = math_op("MAXIMUM", web, long_cracks)
+
+    mirror = node("ShaderNodeBsdfPrincipled", Metallic=1.0)
+    mirror.inputs["Base Color"].default_value = (0.72, 0.72, 0.69, 1)
+    L.new(math_op("MAXIMUM", fog, math_op("MULTIPLY", crack, 0.9)), mirror.inputs["Roughness"])
+    bump = node("ShaderNodeBump", Strength=0.5)
+    L.new(crack, bump.inputs["Height"])
+    L.new(bump.outputs["Normal"], mirror.inputs["Normal"])
+    dirt = node("ShaderNodeBsdfPrincipled", Roughness=0.9)
+    dirt.inputs["Base Color"].default_value = (0.16, 0.14, 0.11, 1)
+    mix = N.new("ShaderNodeMixShader")
+    L.new(math_op("MAXIMUM", grime, math_op("MULTIPLY", crack, 0.7)), mix.inputs[0])
+    L.new(mirror.outputs[0], mix.inputs[1])
+    L.new(dirt.outputs[0], mix.inputs[2])
+    L.new(mix.outputs[0], out.inputs["Surface"])
+    me.materials.append(m)
+    return obj
+
+
 # ─── CAMERA ──────────────────────────────────────────────────────────────────
 def make_camera():
     data = bpy.data.cameras.new("Cam")
@@ -182,7 +278,7 @@ def build_views(top):
     eye = Vector((SEAT.x, SEAT.y, EYE_SEATED))
     lean = Vector((SEAT.x, SEAT.y + 0.42, 1.32))
     return {
-        "table": pose(lean, Vector((0, 0.05, top))),
+        "table": pose(lean, Vector((0, -0.12, top))),
         "card": pose(eye, CARD_DEALER + Vector((0.2, 0.08, 1.36))),
         "piece": pose(eye, PIECE_DEALER + Vector((-0.2, 0.08, 1.36))),
         "resell": pose(eye, RESELLER + Vector((0.15, -0.15, 1.3))),
@@ -264,28 +360,82 @@ def render_all(cam, views):
         key(cam, n, lb, rb, fb)
         render_clip("turn_%s_%s" % (a, b), n)
 
-    # Intro: the mirror, the corridor, the room, a glance at the dealers, sitting down, the board.
+    render_intro(cam, views, q)
+
+
+def intro_flicker():
+    """The bathroom strip light stutters on at the start of the intro, then holds."""
+    strip = LIGHTS["strip"].data
+    full = strip.energy
+    for frame, level in ((1, 0.0), (3, 0.0), (4, 1.0), (5, 0.1), (7, 0.9), (9, 0.0), (12, 0.0), (13, 1.0),
+                         (14, 0.3), (16, 1.0), (31, 1.0), (32, 0.55), (33, 1.0)):
+        strip.energy = full * level
+        strip.keyframe_insert("energy", frame=frame)
+    for fc in characters._fcurves(strip.animation_data.action):
+        for k in fc.keyframe_points:
+            k.interpolation = "CONSTANT"  # a tube light snaps on and off
+
+
+def heads_follow(cam):
+    """Every head turns to watch the camera: the opponent all along, the dealers once you walk in."""
+    for name, rig in RIGS.items():
+        head = rig.pose.bones["head"]
+        track = head.constraints.new("DAMPED_TRACK")
+        track.target = cam
+        track.track_axis = "TRACK_NEGATIVE_Z"  # the face looks along the head bone's -Z
+        limit = head.constraints.new("LIMIT_ROTATION")
+        limit.owner_space = "LOCAL"
+        for axis, deg in (("x", 25), ("y", 70), ("z", 20)):
+            setattr(limit, "use_limit_" + axis, True)
+            setattr(limit, "min_" + axis, -math.radians(deg))
+            setattr(limit, "max_" + axis, math.radians(deg))
+        keys = ((1, 0.75),) if name == "opponent" else ((1, 0.0), (118, 0.0), (150, 0.85))
+        for frame, influence in keys:
+            track.influence = influence
+            track.keyframe_insert("influence", frame=frame)
+
+
+def opponent_gesture():
+    """As you sit down, the opponent lifts his right hand and opens it toward your seat."""
+    target = bpy.data.objects["opponent_hand_R"]
+    rest = target.location.copy()
+    for frame, offset in ((198, (0, 0, 0)), (214, (0.1, 0.2, 0.27)), (234, (0.11, 0.22, 0.28)), (250, (0, 0, 0))):
+        target.location = rest + Vector(offset)
+        target.keyframe_insert("location", frame=frame)
+
+
+def render_intro(cam, views, q):
+    """The mirror, the corridor, the room, a look at each dealer, sitting down, the board."""
     clear_keys(cam)
+    intro_flicker()
+    heads_follow(cam)
+    opponent_gesture()
     t_loc, t_rot, t_focus = views["table"]
     up = math.pi / 2
+    turn = 2 * math.pi
+    look = math.radians(64)  # the dealers stand about 64 degrees off to each side
     beats = [
-        (1,   (0, -7.15, EYE_STANDING), (up, 0, math.pi), 0.8),                         # staring into the mirror
-        (36,  (0, -7.15, EYE_STANDING), (up, 0, math.pi), 0.8),
-        (64,  (0, -6.95, EYE_STANDING), (up, 0, 2 * math.pi), 3.0),                    # turn to the door
-        (112, (0, -4.4, EYE_STANDING + 0.02), (up, 0, 2 * math.pi), 3.5),              # down the corridor
-        (150, (0, -2.0, EYE_STANDING), (math.radians(86), 0, 2 * math.pi), 3.0),       # into the room
-        (168, (0, -1.6, EYE_STANDING), (math.radians(86), 0, 2 * math.pi + math.radians(28)), 1.7),  # card dealer
-        (186, (0, -1.4, EYE_STANDING), (math.radians(86), 0, 2 * math.pi - math.radians(28)), 1.7),  # piece dealer
-        (212, (0, -0.95, EYE_SEATED), (math.radians(88), 0, 2 * math.pi), 1.95),       # sit, facing the opponent
-        (240, t_loc, (t_rot[0], 0, 2 * math.pi), t_focus),                              # lean over the board
+        (1,   (0, -6.95, EYE_STANDING), (up, 0, math.pi), 1.0),                    # fade in on the mirror
+        (56,  (0, -7.22, EYE_STANDING - 0.02), (up, 0, math.pi), 0.75),            # drift closer
+        (66,  (0, -7.22, EYE_STANDING - 0.02), (up, 0, math.pi), 0.75),
+        (92,  (0, -6.95, EYE_STANDING), (up, 0, turn), 3.0),                       # turn to the door
+        (134, (0, -4.4, EYE_STANDING + 0.02), (up, 0, turn), 3.5),                 # down the corridor
+        (160, (0, -2.2, EYE_STANDING), (math.radians(86), 0, turn), 3.0),          # into the room
+        (174, (0, -1.85, EYE_STANDING), (math.radians(84), 0, turn + look), 1.7),  # the card dealer
+        (184, (0, -1.8, EYE_STANDING), (math.radians(84), 0, turn + look), 1.7),
+        (200, (0, -1.7, EYE_STANDING), (math.radians(84), 0, turn - look), 1.7),   # the piece dealer
+        (208, (0, -1.65, EYE_STANDING), (math.radians(84), 0, turn - look), 1.7),
+        (226, (0, -0.95, EYE_SEATED), (math.radians(88), 0, turn), 1.95),          # sit; he gestures to the board
+        (240, (0, -0.95, EYE_SEATED), (math.radians(88), 0, turn), 1.95),
+        (INTRO_FRAMES, t_loc, (t_rot[0], 0, turn), t_focus),                       # lean over the board
     ]
     for frame, loc, rot, focus in beats:
         key(cam, max(1, frame // q), loc, rot, focus)
-    for frame in range(70, 112, 12):  # a slight bob while walking
+    for frame in range(98, 134, 12):  # a slight bob while walking
         z = EYE_STANDING + (0.025 if (frame // 12) % 2 else -0.015)
-        cam.location = (0, -6.95 + (frame - 64) / 48 * 2.55, z)
+        cam.location = (0, -6.95 + (frame - 92) / 42 * 2.55, z)
         cam.keyframe_insert("location", frame=max(1, frame // q))
-    render_clip("intro", max(2, 240 // q))
+    render_clip("intro", max(2, INTRO_FRAMES // q))
 
 
 def main():
