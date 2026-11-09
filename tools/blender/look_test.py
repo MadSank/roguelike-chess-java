@@ -15,6 +15,9 @@ import time
 
 from mathutils import Vector
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import masks  # noqa: E402
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ASSETS = os.path.join(HERE, "assets")
 args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
@@ -120,7 +123,7 @@ def bounds(objs):
     return lo, hi
 
 
-def masked_figure(pos, facing, wool, porcelain, dark, seated=False):
+def masked_figure(pos, facing, wool, porcelain, dark, seated=False, mood="smile", seed=1):
     """Stand-in: hooded robe with a porcelain mask. facing = Z rotation (0 faces +Y)."""
     fx, fy = -math.sin(facing), math.cos(facing)
     base = 0.42 if seated else 0.0
@@ -136,17 +139,15 @@ def masked_figure(pos, facing, wool, porcelain, dark, seated=False):
     hood.scale = (0.17, 0.17, 0.21)
     hood.data.materials.append(wool)
     bpy.ops.object.shade_smooth()
-    bpy.ops.mesh.primitive_uv_sphere_add(radius=1, location=(pos.x + fx * 0.11, pos.y + fy * 0.11, head_z - 0.01))
-    mask = bpy.context.active_object
-    mask.scale = (0.105, 0.105, 0.145)
-    mask.rotation_euler = (0, 0, facing)
-    mask.data.materials.append(porcelain)
-    bpy.ops.object.shade_smooth()
-    sx, sy = math.cos(facing), math.sin(facing)
-    for side in (-1, 1):
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.018, location=(
-            pos.x + fx * 0.205 + sx * 0.04 * side, pos.y + fy * 0.205 + sy * 0.04 * side, head_z + 0.02))
-        bpy.context.active_object.data.materials.append(dark)
+    # Theatre mask (masks.py): faces -Y as built, so turn it to face where the figure faces.
+    mask = masks.make_mask("mask_" + mood, mood, seed=seed)
+    mask.location = (pos.x + fx * 0.115, pos.y + fy * 0.115, head_z - 0.01)
+    mask.rotation_euler = (math.pi / 2, 0, facing + math.pi)
+    # A dark void behind the mask so the eye holes read as black.
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=1, location=(pos.x + fx * 0.05, pos.y + fy * 0.05, head_z))
+    void = bpy.context.active_object
+    void.scale = (0.1, 0.1, 0.13)
+    void.data.materials.append(dark)
 
 
 def build():
@@ -181,7 +182,7 @@ def build():
     lo, hi = bounds(table_objs)
     top = hi.z
     import_model("chess_set", Vector((0, 0, 0)), rot_z=CHESS_ROT, sit_on=top)
-    import_model("WoodenChair_01", Vector((OPPONENT.x, OPPONENT.y + 0.1, 0)), rot_z=math.pi, sit_on=0.0)
+    import_model("WoodenChair_01", Vector((OPPONENT.x, OPPONENT.y + 0.1, 0)), rot_z=0.0, sit_on=0.0)  # back behind the opponent
     import_model("hanging_industrial_lamp", Vector((0, 0, 0)), scale=0.45, sit_on=1.95)
     import_model("wooden_crate_01", Vector((-2.4, 1.9, 0)), rot_z=0.3, sit_on=0.0)
     import_model("wooden_crate_01", Vector((-2.35, 1.85, 0.55)), rot_z=-0.2, sit_on=None)
@@ -189,12 +190,12 @@ def build():
     import_model("wine_bottles_01", Vector((2.35, 2.1, 0)), sit_on=1.0)
     import_model("brass_candleholders", Vector((-1.75, -0.05, 0)), scale=0.7, sit_on=0.98)
 
-    wool = plain("wool", (0.012, 0.011, 0.01), rough=0.95, sheen=0.05)
+    wool = plain("wool", (0.03, 0.026, 0.022), rough=0.95, sheen=0.15)
     porcelain = plain("porcelain", (0.82, 0.79, 0.72), rough=0.22, coat=0.6)
     dark = plain("eyeholes", (0.0, 0.0, 0.0), rough=1.0)
-    masked_figure(OPPONENT, math.pi, wool, porcelain, dark, seated=True)
+    masked_figure(OPPONENT, math.pi, wool, porcelain, dark, seated=True, mood="sad", seed=5)
     masked_figure(CARD_DEALER, math.atan2(SEAT.y - CARD_DEALER.y, SEAT.x - CARD_DEALER.x) - math.pi / 2,
-                  wool, porcelain, dark)
+                  wool, porcelain, dark, mood="smile", seed=2)
     # A small stand for the card dealer's candles.
     bpy.ops.mesh.primitive_cylinder_add(radius=0.2, depth=0.98, location=(-1.75, -0.05, 0.49))
     bpy.context.active_object.data.materials.append(plain("stand", (0.08, 0.05, 0.03), rough=0.6))
@@ -223,6 +224,18 @@ def build():
     o = bpy.data.objects.new("candle", candle)
     o.location = (-1.75, -0.05, 1.25)
     bpy.context.collection.objects.link(o)
+
+    # Rim lights behind the opponent and the dealer, so dark robes separate from the dark room.
+    for src, dst, energy in (((0.3, 2.3, 2.1), OPPONENT + Vector((0, 0, 1.3)), 45),
+                             ((-2.6, -1.1, 2.2), CARD_DEALER + Vector((0, 0, 1.4)), 30)):
+        rim = bpy.data.lights.new("rim", "AREA")
+        rim.energy = energy
+        rim.color = (1.0, 0.6, 0.35)
+        rim.size = 0.6
+        o = bpy.data.objects.new("rim", rim)
+        o.location = src
+        o.rotation_euler = (dst - Vector(src)).to_track_quat("-Z", "Y").to_euler()
+        bpy.context.collection.objects.link(o)
 
     cam_data = bpy.data.cameras.new("Cam")
     cam_data.lens = 32
@@ -284,12 +297,15 @@ def main():
     sc, cam, top = build()
     shots = {
         # Seated, looking across the board at the opponent.
-        "pov": (Vector((0, -1.0, 1.3)), Vector((0, 0.45, 0.95)), Vector((0, 0.0, top + 0.05))),
+        "pov": (Vector((0, -1.05, 1.32)), Vector((0, 0.6, 1.12)), Vector((0, 0.84, 1.55))),
         # Turned left, toward the card dealer.
         "dealer": (Vector((0, -0.92, 1.2)), CARD_DEALER + Vector((0.05, 0, 1.45)), CARD_DEALER + Vector((0, 0, 1.55))),
     }
     times = []
+    engines = os.environ.get("ENGINES", "eevee,cycles").split(",")
     for engine, setup in (("eevee", use_eevee), ("cycles", use_cycles)):
+        if engine not in engines:
+            continue
         setup(sc)
         for name, (eye, target, focus) in shots.items():
             aim(cam, eye, target, focus)
