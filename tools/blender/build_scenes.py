@@ -24,6 +24,7 @@ import sys
 from mathutils import Vector
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import characters  # noqa: E402
 import scene_kit as kit  # noqa: E402
 
 # ─── SETTINGS ────────────────────────────────────────────────────────────────
@@ -112,10 +113,12 @@ def build_set():
     kit.light("POINT", (0, 0, 1.98), 25, (1.0, 0.7, 0.4), size=0.05)
 
     # The opponent and the three dealers.
-    kit.masked_figure(OPPONENT, math.pi, mats, seated=True, mood="sad", seed=5)
-    kit.masked_figure(CARD_DEALER, yaw_to(CARD_DEALER, SEAT), mats, mood="smile", seed=2)
-    kit.masked_figure(PIECE_DEALER, yaw_to(PIECE_DEALER, SEAT), mats, mood="sad", seed=7)
-    kit.masked_figure(RESELLER, yaw_to(RESELLER, SEAT), mats, mood="smile", seed=11, height=0.95)
+    cmats = {"wool": characters.wool_material("wool"), "capelet": characters.wool_material("capelet", (0.01, 0.009, 0.008)),
+             "glove": characters.leather_material("glove"), "void": characters.void_material("void")}
+    characters.build_character("opponent", OPPONENT, math.pi, mood="sad", seed=5, seated=True, pose="table", mats=cmats)
+    characters.build_character("card_dealer", CARD_DEALER, yaw_to(CARD_DEALER, SEAT), mood="smile", seed=2, pose="offering", mats=cmats)
+    characters.build_character("piece_dealer", PIECE_DEALER, yaw_to(PIECE_DEALER, SEAT), mood="sad", seed=7, pose="clasped", mats=cmats)
+    characters.build_character("reseller", RESELLER, yaw_to(RESELLER, SEAT), mood="smile", seed=11, pose="clasped", height=0.95, mats=cmats)
 
     # Card dealer: a small stand with candles and a fan of cards.
     stand = Vector((-1.05, -0.62, 0))
@@ -227,6 +230,9 @@ def render_all(cam, views):
         clear_keys(cam)
         key(cam, 1, loc, rot, focus)
         render_clip(name, 1)
+        # The dealer views also get a seamless idle loop (the dealer breathing and shifting).
+        if name != "table":
+            render_clip(name + "_idle", max(2, characters.IDLE_FRAMES // q))
 
     for i, a in enumerate(RING):
         b = RING[(i + 1) % len(RING)]

@@ -29,6 +29,8 @@ public class ScenePlayer {
     private Runnable onArrive;
     private long lastTick;
 
+    /** Position in the current view's idle loop (if it has one). */
+    private int idleFrame;
     private float flicker = 1f;
     private final BufferedImage[] grain = new BufferedImage[4];
     private final BufferedImage[] fineGrain = new BufferedImage[4];
@@ -132,12 +134,18 @@ public class ScenePlayer {
         long now = System.currentTimeMillis();
         // The lamp flickers now and then.
         flicker = rng.nextInt(40) == 0 ? 0.8f + rng.nextFloat() * 0.1f : Math.min(1f, flicker + 0.05f);
+        SceneClip idle = playing == null ? SceneClip.load(view + "_idle") : null;
         if (playing != null) {
             frame++;
             if (frame >= playing.frameCount()) startNext(view);
             else prefetch();
+        } else if (idle != null) {
+            // Resting on a view with an idle loop (a dealer breathing): keep it moving.
+            idleFrame = (idleFrame + 1) % idle.frameCount();
+            idle.prefetch(idleFrame, 1);
+            if (idleFrame + 10 >= idle.frameCount()) idle.prefetch(-1, 1); // wrap-around frames
         }
-        if (playing != null || now - lastTick > 80) { // stills: animate grain at ~12 fps
+        if (playing != null || idle != null || now - lastTick > 80) { // stills: animate grain at ~12 fps
             lastTick = now;
             host.repaint();
         }
@@ -149,6 +157,8 @@ public class ScenePlayer {
             int i = reverse ? playing.frameCount() - 1 - frame : frame;
             return playing.frame(i);
         }
+        SceneClip idle = SceneClip.load(view + "_idle");
+        if (idle != null) return idle.frame(idleFrame % idle.frameCount());
         SceneClip still = SceneClip.load(view);
         return still == null ? null : still.frame(0);
     }
