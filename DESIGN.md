@@ -60,6 +60,7 @@ A roguelike chess run against an AI that gets stronger every level. Cards give r
 ## AI
 - Difficulty comes from a per-level table (search depth, time budget, evaluation quality, blunder chance), not raw depth alone; practical search depth tops out around 6–8.
 - The AI plans with plain chess rules: it does not understand the player's card effects. Its chosen move is always checked against the real rules.
+- Current table (Difficulty.java): depth 1 at level 1 rising to 6 at level 14+, think time 0.5 s → 4 s, evaluation from material-only up to piece placement, capture search from level 5, and a chance of a random move (30% at level 1, 0% from level 6).
 
 ## Cards
 - Cards are one-round consumables, played from the hand during a round.

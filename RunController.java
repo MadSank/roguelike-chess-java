@@ -111,7 +111,7 @@ public class RunController {
         s.cardManager.onGameStart(s);
 
         engine = new ChessEngine(s);
-        ai = new AIPlayer(engine, s.aiDepth);
+        ai = new AIPlayer(Difficulty.forLevel(level), rng);
         blackMaterialAtStart = Economy.material(s, false);
         roundBonuses.clear();
         phase = Phase.PLAYING;

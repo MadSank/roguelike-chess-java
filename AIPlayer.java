@@ -1,184 +1,243 @@
 import java.util.*;
 
 /**
- * The opponent. Always plays Black. Minimax with alpha-beta pruning; scores are from
- * Black's point of view (positive = good for the AI).
+ * The opponent. Plays whichever side is to move (in the game that's always Black).
  *
- * Search uses ChessEngine.simulateMove, the same move code the real game uses.
+ * Search: negamax with alpha-beta, iterative deepening inside a time limit, captures-first
+ * move ordering and (from mid levels) a capture-only quiescence search.
+ *
+ * Card blindness (DESIGN.md): the AI only plays moves that are legal under the real rules,
+ * but it plans with plain chess. It doesn't know what the player's cards do (extra moves,
+ * mines, stuns, coin flips...), so card effects catch it out.
  */
 public class AIPlayer {
-    private final int searchDepth;
+    private final Difficulty difficulty;
+    private final Random rng;
 
-    private static final int PAWN_VALUE = 100;
-    private static final int KNIGHT_VALUE = 320;
-    private static final int BISHOP_VALUE = 330;
-    private static final int ROOK_VALUE = 500;
-    private static final int QUEEN_VALUE = 900;
-    private static final int KING_VALUE = 20000;
-
-    /** Score for delivering mate; mates found sooner score higher. */
     private static final int MATE = 10_000_000;
     private static final int INFINITY = 1_000_000_000;
-    private static final int DRAW = 0;
+    private static final int MAX_QUIESCENCE_PLIES = 6;
 
+    private long deadline;
+    private long nodes;
+    private int depthReached;
+
+    /** Thrown to stop a search that ran out of time. */
+    private static final class Timeout extends RuntimeException {
+        Timeout() {
+            super(null, null, false, false);
+        }
+    }
+
+    public AIPlayer(Difficulty difficulty, Random rng) {
+        this.difficulty = difficulty;
+        this.rng = rng;
+    }
+
+    /** Fixed depth, full strength, no time limit (tests and simulations). */
     public AIPlayer(ChessEngine engine, int searchDepth) {
-        this.searchDepth = Math.max(1, searchDepth);
+        this(Difficulty.fixedDepth(Math.max(1, searchDepth)), new Random(0));
     }
 
     public int getSearchDepth() {
-        return searchDepth;
+        return difficulty.searchDepth;
     }
 
-    /** Picks Black's move in the given position, or null if Black has no legal move. */
+    /** Positions searched by the last chooseMove call. */
+    public long getNodes() {
+        return nodes;
+    }
+
+    /** Deepest search the last chooseMove call finished (0 if it blundered on purpose). */
+    public int getDepthReached() {
+        return depthReached;
+    }
+
+    /** Picks a move for the side to move, or null if it has no legal move. */
     public Move chooseMove(GameState state) {
-        ChessEngine engine = new ChessEngine(state);
-        List<Move> legalMoves = engine.getAllLegalMoves(false);
-        if (legalMoves.isEmpty()) {
-            return null;
+        nodes = 0;
+        depthReached = 0;
+        List<Move> rootMoves = new ChessEngine(state).getAllLegalMoves(state.whiteToMove);
+        if (rootMoves.isEmpty()) return null;
+        if (difficulty.blunderPercent > 0 && rng.nextInt(100) < difficulty.blunderPercent) {
+            return rootMoves.get(rng.nextInt(rootMoves.size()));
         }
-        Move bestMove = legalMoves.get(0);
-        int bestScore = -INFINITY;
-        int alpha = -INFINITY;
-        int beta = INFINITY;
-        for (Move move : legalMoves) {
-            GameState next = engine.simulateMove(state, move);
-            int score = minimax(next, searchDepth - 1, alpha, beta, 1);
-            if (score > bestScore) {
-                bestScore = score;
-                bestMove = move;
+
+        GameState belief = plainChessView(state);
+        ChessEngine beliefEngine = new ChessEngine(belief);
+        orderMoves(belief, rootMoves);
+        deadline = difficulty.timeLimitMs > 0 ? System.nanoTime() + difficulty.timeLimitMs * 1_000_000L : Long.MAX_VALUE;
+
+        Move best = rootMoves.get(0);
+        for (int depth = 1; depth <= difficulty.searchDepth; depth++) {
+            try {
+                int alpha = -INFINITY;
+                Move depthBest = null;
+                for (Move m : rootMoves) {
+                    int score = -negamax(beliefEngine.simulateMove(belief, m), depth - 1, -INFINITY, -alpha, 1);
+                    if (depthBest == null || score > alpha) {
+                        alpha = score;
+                        depthBest = m;
+                    }
+                }
+                best = depthBest;
+                depthReached = depth;
+                rootMoves.remove(best);
+                rootMoves.add(0, best); // search the best move first next iteration
+                if (alpha >= MATE - 100) break; // forced mate found
+            } catch (Timeout t) {
+                break; // keep the best move from the last finished depth
             }
-            alpha = Math.max(alpha, score);
         }
-        return bestMove;
+        return best;
     }
 
     /**
-     * @param ply distance from the root, used to prefer faster mates and slower losses
+     * What the AI believes the position is: the same board, but no cards and none of their
+     * markers (mines, stuns...). It plans as if this were an ordinary game of chess.
      */
-    private int minimax(GameState state, int depth, int alpha, int beta, int ply) {
-        if (ChessEngine.drawReason(state) != null) {
-            return DRAW;
-        }
-        boolean blackToMove = !state.whiteToMove;
+    static GameState plainChessView(GameState real) {
+        GameState b = real.copy();
+        b.cardManager = new CardManager();
+        b.stunnedPieces.clear();
+        b.minefieldSquares.clear();
+        b.cardCounters.clear();
+        b.vaultingPieceSquare = -1;
+        return b;
+    }
+
+    private int negamax(GameState state, int depth, int alpha, int beta, int ply) {
+        checkTime();
+        if (ChessEngine.drawReason(state) != null) return 0;
         ChessEngine engine = new ChessEngine(state);
         List<Move> moves = engine.getAllLegalMoves(state.whiteToMove);
-
         if (moves.isEmpty()) {
-            if (engine.isKingInCheck(state, state.whiteToMove)) {
-                // Side to move is checkmated.
-                return blackToMove ? -(MATE - ply) : (MATE - ply);
-            }
-            return DRAW; // stalemate
+            return engine.isKingInCheck(state, state.whiteToMove) ? -(MATE - ply) : 0;
         }
         if (depth <= 0) {
-            return evaluatePosition(state, engine, moves.size());
+            return difficulty.quiescence
+                ? quiescence(state, engine, alpha, beta, ply, MAX_QUIESCENCE_PLIES)
+                : evaluateForSideToMove(state, engine);
         }
-
-        if (blackToMove) {
-            int best = -INFINITY;
-            for (Move move : moves) {
-                int eval = minimax(engine.simulateMove(state, move), depth - 1, alpha, beta, ply + 1);
-                best = Math.max(best, eval);
-                alpha = Math.max(alpha, eval);
-                if (beta <= alpha) break;
-            }
-            return best;
-        } else {
-            int best = INFINITY;
-            for (Move move : moves) {
-                int eval = minimax(engine.simulateMove(state, move), depth - 1, alpha, beta, ply + 1);
-                best = Math.min(best, eval);
-                beta = Math.min(beta, eval);
-                if (beta <= alpha) break;
-            }
-            return best;
+        orderMoves(state, moves);
+        int best = -INFINITY;
+        for (Move m : moves) {
+            int score = -negamax(engine.simulateMove(state, m), depth - 1, -beta, -alpha, ply + 1);
+            if (score > best) best = score;
+            if (score > alpha) alpha = score;
+            if (alpha >= beta) break;
         }
+        return best;
     }
 
-    /**
-     * Static evaluation of a non-terminal position.
-     * @param sideToMoveMobility number of legal moves for the side to move (already computed)
-     */
-    private int evaluatePosition(GameState state, ChessEngine engine, int sideToMoveMobility) {
+    /** Keeps resolving captures so the search doesn't stop in the middle of an exchange. */
+    private int quiescence(GameState state, ChessEngine engine, int alpha, int beta, int ply, int pliesLeft) {
+        checkTime();
+        int standPat = evaluateForSideToMove(state, engine);
+        if (pliesLeft == 0 || standPat >= beta) return standPat;
+        if (standPat > alpha) alpha = standPat;
+
+        List<Move> captures = new ArrayList<>();
+        for (Move m : engine.getAllLegalMoves(state.whiteToMove)) {
+            if (m.isCapture || m.isPromotion) captures.add(m);
+        }
+        orderMoves(state, captures);
+        for (Move m : captures) {
+            GameState next = engine.simulateMove(state, m);
+            int score = -quiescence(next, new ChessEngine(next), -beta, -alpha, ply + 1, pliesLeft - 1);
+            if (score >= beta) return score;
+            if (score > alpha) alpha = score;
+        }
+        return alpha;
+    }
+
+    private void checkTime() {
+        nodes++;
+        if ((nodes & 63) == 0 && System.nanoTime() > deadline) throw new Timeout();
+    }
+
+    // ─── MOVE ORDERING ──────────────────────────────────────────
+
+    /** Promotions and captures first (most valuable victim, cheapest attacker), then the rest. */
+    private void orderMoves(GameState s, List<Move> moves) {
+        Map<Move, Integer> key = new HashMap<>();
+        for (Move m : moves) key.put(m, orderScore(s, m));
+        moves.sort((a, b) -> key.get(b) - key.get(a));
+    }
+
+    private int orderScore(GameState s, Move m) {
         int score = 0;
+        if (m.isPromotion) score += "Q".equals(m.promotionType) ? 9000 : 1000;
+        if (m.isCapture) {
+            Piece victim = m.isEnPassant ? s.board[m.fromRow][m.toCol]
+                : m.isSniperShot ? s.board[m.sniperTargetRow][m.sniperTargetCol] : s.board[m.toRow][m.toCol];
+            Piece attacker = s.board[m.fromRow][m.fromCol];
+            score += 10 * pieceValue(victim) - pieceValue(attacker) / 10 + 100;
+        }
+        return score;
+    }
+
+    // ─── EVALUATION ─────────────────────────────────────────────
+
+    private int evaluateForSideToMove(GameState s, ChessEngine engine) {
+        int blackScore = evaluate(s, engine);
+        return s.whiteToMove ? -blackScore : blackScore;
+    }
+
+    /** Static evaluation from Black's point of view (positive = good for Black). */
+    private int evaluate(GameState s, ChessEngine engine) {
+        int score = 0;
+        int totalMaterial = 0;
+        for (int r = 0; r < 8; r++) {
+            for (int c = 0; c < 8; c++) {
+                Piece p = s.board[r][c];
+                if (p != null && !(p instanceof King)) totalMaterial += Economy.material(p);
+            }
+        }
+        boolean endgame = totalMaterial <= 20;
 
         for (int r = 0; r < 8; r++) {
             for (int c = 0; c < 8; c++) {
-                Piece piece = state.board[r][c];
-                if (piece != null) {
-                    int value = getPieceValue(piece);
-
-                    // Card-aware: stunned pieces are worth less
-                    if (state.stunnedPieces != null && state.stunnedPieces.containsKey(r * 8 + c)) {
-                        value = value * 60 / 100;
-                    }
-
-                    // Card-aware: pieces near minefields lose value
-                    if (state.minefieldSquares != null && !state.minefieldSquares.isEmpty()) {
-                        for (int mineIdx : state.minefieldSquares) {
-                            int mr = mineIdx / 8, mc = mineIdx % 8;
-                            if (Math.abs(r - mr) <= 1 && Math.abs(c - mc) <= 1) {
-                                value = value * 85 / 100;
-                                break;
-                            }
-                        }
-                    }
-
-                    score += piece.isWhite() ? -value : value;
-                }
+                Piece p = s.board[r][c];
+                if (p == null) continue;
+                int value = pieceValue(p);
+                if (difficulty.evalTier >= 2) value += placement(p, r, c, endgame);
+                score += p.isWhite() ? -value : value;
             }
         }
 
-        // Mobility: pseudo-legal move counts (cheap, and the same measure for both sides).
-        int whiteMobility = engine.countPseudoLegalMoves(true);
-        int blackMobility = engine.countPseudoLegalMoves(false);
-        score += (blackMobility - whiteMobility) * 10;
-
-        score += evaluateCenterControl(state);
-
-        // Card-aware: phalanx bonus for adjacent pawns
-        if (state.cardManager != null && state.cardManager.hasCard(CardPawnPhalanx.class)) {
-            score += evaluatePhalanxBonus(state);
+        if (difficulty.evalTier >= 1) {
+            score += (engine.countPseudoLegalMoves(false) - engine.countPseudoLegalMoves(true)) * 10;
+            for (int r = 3; r <= 4; r++) {
+                for (int c = 3; c <= 4; c++) {
+                    Piece p = s.board[r][c];
+                    if (p != null) score += p.isWhite() ? -20 : 20;
+                }
+            }
         }
-
         return score;
     }
 
-    private int evaluatePhalanxBonus(GameState state) {
-        int bonus = 0;
-        for (int r = 0; r < 8; r++) {
-            for (int c = 0; c < 7; c++) {
-                Piece p1 = state.board[r][c];
-                Piece p2 = state.board[r][c + 1];
-                if (p1 instanceof Pawn && p2 instanceof Pawn && p1.isWhite() == p2.isWhite()) {
-                    bonus += p1.isWhite() ? -25 : 25;
-                }
-            }
-        }
-        return bonus;
-    }
-
-    private int getPieceValue(Piece piece) {
-        if (piece instanceof Pawn) return PAWN_VALUE;
-        if (piece instanceof Knight) return KNIGHT_VALUE;
-        if (piece instanceof Bishop) return BISHOP_VALUE;
-        if (piece instanceof Rook) return ROOK_VALUE;
-        if (piece instanceof Queen) return QUEEN_VALUE;
-        if (piece instanceof King) return KING_VALUE;
+    static int pieceValue(Piece p) {
+        if (p instanceof Pawn) return 100;
+        if (p instanceof Knight) return 320;
+        if (p instanceof Bishop) return 330;
+        if (p instanceof Rook) return 500;
+        if (p instanceof Queen) return 900;
+        if (p instanceof King) return 20000;
         return 0;
     }
 
-    private int evaluateCenterControl(GameState state) {
-        int score = 0;
-        int[] center = {3, 4};
-        for (int r : center) {
-            for (int c : center) {
-                Piece piece = state.board[r][c];
-                if (piece != null) {
-                    score += piece.isWhite() ? -20 : 20;
-                }
-            }
-        }
-        return score;
+    /** Simple piece placement bonuses (tier 2). Written for White and mirrored for Black. */
+    private static int placement(Piece p, int row, int col, boolean endgame) {
+        int r = p.isWhite() ? row : 7 - row; // r = 7 is the piece's own back rank
+        int centre = (int) ((3.5 - Math.abs(r - 3.5)) + (3.5 - Math.abs(col - 3.5))); // 0..6
+        if (p instanceof Pawn) return (6 - r) * 10 + (col >= 2 && col <= 5 ? 5 : 0);
+        if (p instanceof Knight) return centre * 8 - 15;
+        if (p instanceof Bishop) return centre * 5;
+        if (p instanceof Rook) return r == 1 ? 25 : 0;      // rook on the 7th rank
+        if (p instanceof Queen) return centre * 2;
+        if (p instanceof King) return endgame ? centre * 10 : (7 - r) * -15; // shelter early, centralise late
+        return 0;
     }
 }

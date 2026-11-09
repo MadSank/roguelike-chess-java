@@ -97,14 +97,15 @@ public class GameState implements Serializable {
         return c;
     }
 
-    /** Makes this state an independent deep copy of other. */
+    /**
+     * Makes this state an independent copy of other. Piece objects are shared: nothing
+     * changes a piece after it is placed (moves replace the board slot instead), so
+     * sharing them is safe and keeps copies cheap for the AI's search.
+     */
     public void copyFrom(GameState other) {
         board = new Piece[8][8];
         for (int r = 0; r < 8; r++) {
-            for (int col = 0; col < 8; col++) {
-                Piece p = other.board[r][col];
-                board[r][col] = (p != null) ? p.clone() : null;
-            }
+            System.arraycopy(other.board[r], 0, board[r], 0, 8);
         }
         whiteToMove = other.whiteToMove;
         goldPlayer = other.goldPlayer;

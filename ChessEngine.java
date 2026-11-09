@@ -259,7 +259,8 @@ public class ChessEngine {
         }
 
         // The move may not leave the mover's own king in check.
-        GameState after = simulateMove(state, move);
+        if (!hasActiveCards(state)) return !leavesKingInCheckPlain(move, moverIsWhite);
+        GameState after = simulateMove(state, move); // cards can change the board after a move
         return !isKingInCheck(after, moverIsWhite);
     }
 
@@ -320,41 +321,81 @@ public class ChessEngine {
     }
 
     private boolean attacksSquare(Piece piece, int fromRow, int fromCol, int toRow, int toCol, GameState gs) {
+        if (plainAttack(piece, fromRow, fromCol, toRow, toCol, gs.board)) return true;
+        if (piece instanceof Pawn || piece instanceof King) return false;
+        // Card hook: extended attacks (e.g. Cavalry Charge radius)
+        return gs.cardManager != null && gs.cardManager.canAttackSquare(piece, fromRow, fromCol, toRow, toCol, gs);
+    }
+
+    /** Ordinary chess attack geometry, no cards. */
+    private static boolean plainAttack(Piece piece, int fromRow, int fromCol, int toRow, int toCol, Piece[][] b) {
         int dr = Math.abs(toRow - fromRow);
         int dc = Math.abs(toCol - fromCol);
+        if (dr + dc == 0) return false;
         if (piece instanceof Pawn) {
             int dir = piece.isWhite() ? -1 : 1;
             return (toRow == fromRow + dir) && (dc == 1);
         } else if (piece instanceof Knight) {
-            if ((dr == 2 && dc == 1) || (dr == 1 && dc == 2)) return true;
+            return (dr == 2 && dc == 1) || (dr == 1 && dc == 2);
         } else if (piece instanceof Bishop) {
-            if (dr == dc && dr > 0 && isPathClear(gs, fromRow, fromCol, toRow, toCol)) return true;
+            return dr == dc && isPathClear(b, fromRow, fromCol, toRow, toCol);
         } else if (piece instanceof Rook) {
-            if ((dr == 0 || dc == 0) && (dr + dc > 0) && isPathClear(gs, fromRow, fromCol, toRow, toCol)) return true;
+            return (dr == 0 || dc == 0) && isPathClear(b, fromRow, fromCol, toRow, toCol);
         } else if (piece instanceof Queen) {
-            if (((dr == dc) || (dr == 0 || dc == 0)) && (dr + dc > 0)
-                    && isPathClear(gs, fromRow, fromCol, toRow, toCol)) return true;
+            return (dr == dc || dr == 0 || dc == 0) && isPathClear(b, fromRow, fromCol, toRow, toCol);
         } else if (piece instanceof King) {
-            return dr <= 1 && dc <= 1 && (dr + dc > 0);
-        }
-        // Card hook: extended attacks (e.g. Cavalry Charge radius)
-        if (gs.cardManager != null) {
-            return gs.cardManager.canAttackSquare(piece, fromRow, fromCol, toRow, toCol, gs);
+            return dr <= 1 && dc <= 1;
         }
         return false;
     }
 
-    private boolean isPathClear(GameState gs, int fromRow, int fromCol, int toRow, int toCol) {
+    private static boolean isPathClear(Piece[][] b, int fromRow, int fromCol, int toRow, int toCol) {
         int dr = Integer.compare(toRow - fromRow, 0);
         int dc = Integer.compare(toCol - fromCol, 0);
         int r = fromRow + dr;
         int c = fromCol + dc;
         while (r != toRow || c != toCol) {
-            if (gs.board[r][c] != null) return false;
+            if (b[r][c] != null) return false;
             r += dr;
             c += dc;
         }
         return true;
+    }
+
+    /**
+     * Fast "does this move leave the mover's king in check" for positions with no cards:
+     * works on a bare board copy instead of a full simulated GameState.
+     */
+    private boolean leavesKingInCheckPlain(Move move, boolean moverIsWhite) {
+        Piece[][] b = new Piece[8][];
+        for (int r = 0; r < 8; r++) b[r] = state.board[r].clone();
+        if (move.isEnPassant) b[move.fromRow][move.toCol] = null;
+        b[move.toRow][move.toCol] = b[move.fromRow][move.fromCol];
+        b[move.fromRow][move.fromCol] = null;
+
+        int kr = -1, kc = -1;
+        for (int r = 0; r < 8 && kr < 0; r++) {
+            for (int c = 0; c < 8; c++) {
+                Piece p = b[r][c];
+                if (p instanceof King && p.isWhite() == moverIsWhite) {
+                    kr = r;
+                    kc = c;
+                    break;
+                }
+            }
+        }
+        if (kr < 0) return true;
+        for (int r = 0; r < 8; r++) {
+            for (int c = 0; c < 8; c++) {
+                Piece p = b[r][c];
+                if (p != null && p.isWhite() != moverIsWhite && plainAttack(p, r, c, kr, kc, b)) return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasActiveCards(GameState s) {
+        return s.cardManager != null && !s.cardManager.getActiveCards().isEmpty();
     }
 
     // ─── GAME END ───────────────────────────────────────────────
