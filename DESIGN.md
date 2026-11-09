@@ -77,7 +77,12 @@ A roguelike chess run against an AI that gets stronger every level. Cards give r
 - A cellar under one hanging lamp. The player sits at a table facing a masked opponent; three hooded dealers stand around the seat: the **card dealer** (left), the **piece dealer** (right) and the **reseller** (behind, right).
 - New Game plays an intro: a bathroom mirror, a corridor, the room, sitting down, leaning over the board. Click to skip.
 - The shop is the three dealers: the camera turns between them (◀ ▶ or arrow keys) like Buckshot Roulette's fixed views; "Sit down" turns back to the table.
-- Everything is rendered in Blender by `tools/blender/build_scenes.py` (placeholder low-poly art from primitives) into `resources/scenes/<clip>/` (320×240 JPG frames) and `resources/images/piece_*.png`. The game scales frames up with nearest-neighbour pixels and adds grain, a vignette and lamp flicker (ScenePlayer). Re-run the script after changing the scene; replace primitives with real models later.
+- Everything is rendered in Blender:
+  - `tools/blender/fetch_assets.py` downloads the Poly Haven (CC0) textures and models into `tools/blender/assets/` (local only).
+  - `tools/blender/build_scenes.py` builds the realistic cellar (brick, concrete, the round table and chess set, the hanging lamp, candles, crates, a barrel stove, a tiled bathroom with a mirror) with the four masked figures, and renders every clip at 1280×720 with Cycles (about an hour; `--draft` renders a fast EEVEE preview in minutes). Shared helpers live in `scene_kit.py`; the theatre masks in `masks.py`.
+  - `tools/blender/piece_sprites.py` renders the piece images until the realistic board (R2) replaces them.
+- Masks: card dealer smiling, piece dealer sad, reseller smiling, opponent sad (each with its own cracks and break).
+- The game streams frames from disk (SceneClip: small cache plus a background decoder), scales HD frames smoothly and adds fine grain, a light vignette and lamp flicker (ScenePlayer). Low-resolution frames still get the chunky look.
 - If the rendered files are missing, the game falls back to its plain look.
 - **Rendered files stay local** (ignored by git): run the Blender script to make them. A fresh clone has no art until it is rendered.
 

@@ -21,6 +21,8 @@ TEXTURES = {
     "plaster_brick_01": "2k",
     "concrete_floor_worn_001": "2k",
     "brown_leather": "1k",
+    "long_white_tiles": "1k",
+    "dirty_tiles": "1k",
 }
 # Models: id -> resolution (glTF with its textures).
 MODELS = {
@@ -32,6 +34,11 @@ MODELS = {
     "Barrel_01": "1k",
     "wine_bottles_01": "1k",
     "brass_candleholders": "1k",
+    "ornate_mirror_01": "1k",
+    "mounted_fluorescent_lights": "1k",
+    "barrel_stove": "1k",
+    "wooden_bookshelf_worn": "1k",
+    "old_military_crate": "1k",
 }
 TEXTURE_MAPS = {"Diffuse": "diff", "nor_gl": "nor_gl", "Rough": "rough"}
 

@@ -31,10 +31,14 @@ public class ScenePlayer {
 
     private float flicker = 1f;
     private final BufferedImage[] grain = new BufferedImage[4];
+    private final BufferedImage[] fineGrain = new BufferedImage[4];
+    /** True when the frames being shown are high resolution (realistic renders). */
+    private boolean hd;
 
     public ScenePlayer(JComponent host) {
         this.host = host;
-        for (int i = 0; i < grain.length; i++) grain[i] = makeGrain(320, 240, new Random(i));
+        for (int i = 0; i < grain.length; i++) grain[i] = makeGrain(320, 240, new Random(i), 18, 22);
+        for (int i = 0; i < fineGrain.length; i++) fineGrain[i] = makeGrain(960, 540, new Random(100 + i), 8, 10);
         timer = new javax.swing.Timer(1000 / SceneClip.FPS, e -> tick());
         timer.start();
     }
@@ -113,6 +117,14 @@ public class ScenePlayer {
         reverse = (Boolean) next[1];
         view = (String) next[2];
         frame = 0;
+        prefetch();
+    }
+
+    /** Asks the clip to decode the frames coming up next (in the playing direction). */
+    private void prefetch() {
+        if (playing == null) return;
+        int i = reverse ? playing.frameCount() - 1 - frame : frame;
+        playing.prefetch(i, reverse ? -1 : 1);
     }
 
     private void tick() {
@@ -123,6 +135,7 @@ public class ScenePlayer {
         if (playing != null) {
             frame++;
             if (frame >= playing.frameCount()) startNext(view);
+            else prefetch();
         }
         if (playing != null || now - lastTick > 80) { // stills: animate grain at ~12 fps
             lastTick = now;
@@ -147,6 +160,9 @@ public class ScenePlayer {
         Object oldHint = g.getRenderingHint(RenderingHints.KEY_INTERPOLATION);
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
         // Cover the area, keeping the 4:3 aspect.
+        // Realistic (HD) frames scale smoothly; low-resolution placeholder frames keep chunky pixels.
+        hd = img.getWidth() >= 640;
+        if (hd) g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
         double scale = Math.max(w / (double) img.getWidth(), h / (double) img.getHeight());
         int dw = (int) Math.ceil(img.getWidth() * scale), dh = (int) Math.ceil(img.getHeight() * scale);
         g.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh, null);
@@ -159,22 +175,26 @@ public class ScenePlayer {
     /** Just the moving grain (for screens that must stay readable, like the board). */
     public void drawGrain(Graphics2D g, int w, int h) {
         Object oldHint = g.getRenderingHint(RenderingHints.KEY_INTERPOLATION);
-        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-        g.drawImage(grain[rng.nextInt(grain.length)], 0, 0, w, h, null);
+        if (hd) {
+            // Fine, faint grain for realistic frames.
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.drawImage(fineGrain[rng.nextInt(fineGrain.length)], 0, 0, w, h, null);
+        } else {
+            // Chunky grain for the low-resolution placeholder frames.
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+            g.drawImage(grain[rng.nextInt(grain.length)], 0, 0, w, h, null);
+        }
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, oldHint == null
             ? RenderingHints.VALUE_INTERPOLATION_BILINEAR : oldHint);
     }
 
     /** Grain, vignette and flicker over whatever was drawn. */
     public void drawFilm(Graphics2D g, int w, int h) {
-        Object oldHint = g.getRenderingHint(RenderingHints.KEY_INTERPOLATION);
-        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-        g.drawImage(grain[rng.nextInt(grain.length)], 0, 0, w, h, null);
-        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, oldHint == null
-            ? RenderingHints.VALUE_INTERPOLATION_BILINEAR : oldHint);
+        drawGrain(g, w, h);
+        int mid = hd ? 35 : 70, edge = hd ? 150 : 210; // realistic frames are already lit moodily
         g.setPaint(new RadialGradientPaint(new Point2D.Float(w / 2f, h / 2f), Math.max(w, h) * 0.7f,
             new float[]{0f, 0.6f, 1f},
-            new Color[]{new Color(0, 0, 0, 0), new Color(0, 0, 0, 70), new Color(0, 0, 0, 210)}));
+            new Color[]{new Color(0, 0, 0, 0), new Color(0, 0, 0, mid), new Color(0, 0, 0, edge)}));
         g.fillRect(0, 0, w, h);
         if (flicker < 1f) {
             g.setColor(new Color(0, 0, 0, (int) ((1f - flicker) * 255)));
@@ -182,12 +202,13 @@ public class ScenePlayer {
         }
     }
 
-    private static BufferedImage makeGrain(int w, int h, Random r) {
+    /** Random speckle: about a third of pixels get a grey dot of alpha minAlpha..minAlpha+spread. */
+    private static BufferedImage makeGrain(int w, int h, Random r, int minAlpha, int spread) {
         BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
                 int v = r.nextInt(256);
-                int a = r.nextInt(100) < 35 ? 18 + r.nextInt(22) : 0;
+                int a = r.nextInt(100) < 35 ? minAlpha + r.nextInt(spread) : 0;
                 img.setRGB(x, y, (a << 24) | (v << 16) | (v << 8) | v);
             }
         }
