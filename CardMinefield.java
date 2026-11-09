@@ -51,8 +51,6 @@ public class CardMinefield extends Card {
             Piece landed = state.board[move.toRow][move.toCol];
             if (landed != null && !(landed instanceof King)) {
                 state.board[move.toRow][move.toCol] = null;
-                System.out.println("MINEFIELD: Piece destroyed at (" +
-                    move.toRow + "," + move.toCol + ")!");
             }
         }
     }

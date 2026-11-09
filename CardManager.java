@@ -87,6 +87,36 @@ public class CardManager implements Serializable {
     }
 
     /**
+     * True if some card cancels this capture (see Card.interceptCapture).
+     */
+    public boolean interceptCapture(GameState state, Move move, int targetRow, int targetCol) {
+        for (int i = 0, n = activeCards.size(); i < n; i++) {
+            if (activeCards.get(i).interceptCapture(state, move, targetRow, targetCol)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * True if some card removes this attack for check detection (see Card.blocksAttack).
+     */
+    public boolean blocksAttack(Piece piece, int fr, int fc, int tr, int tc, GameState state) {
+        for (int i = 0, n = activeCards.size(); i < n; i++) {
+            if (activeCards.get(i).blocksAttack(piece, fr, fc, tr, tc, state)) return true;
+        }
+        return false;
+    }
+
+    /** True if any active card reacts to a king being put in check. */
+    public boolean reactsToCheck() {
+        for (int i = 0, n = activeCards.size(); i < n; i++) {
+            if (activeCards.get(i).reactsToCheck()) return true;
+        }
+        return false;
+    }
+
+    /**
      * Resolve capture side-effects (gold, destruction, spawning).
      */
     public void resolveCapture(GameState state, Move move, Piece captured, Piece capturer) {
@@ -226,7 +256,7 @@ public class CardManager implements Serializable {
     public CardManager copy() {
         CardManager cm = new CardManager();
         for (Card c : activeCards) {
-            cm.activeCards.add(c); // cards are stateless singletons mostly
+            cm.activeCards.add(c); // cards are stateless; their per-game state lives in GameState
         }
         return cm;
     }

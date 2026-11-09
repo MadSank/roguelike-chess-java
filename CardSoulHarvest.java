@@ -1,4 +1,3 @@
-
 import java.util.*;
 
 /**
@@ -7,8 +6,8 @@ import java.util.*;
  * Cost: 30 gold
  */
 public class CardSoulHarvest extends Card {
-    private static final long serialVersionUID = 1L;
-    private int captureCount = 0;
+    private static final long serialVersionUID = 2L;
+    static final String CAPTURES = "soulHarvest.captures";
 
     public CardSoulHarvest() {
         super("Soul Harvest",
@@ -19,34 +18,24 @@ public class CardSoulHarvest extends Card {
     @Override
     public void onCapture(GameState state, Move move, Piece captured, Piece capturer) {
         if (capturer == null || !capturer.isWhite()) return; // player only
-
-        captureCount++;
+        int captureCount = state.incrementCounter(CAPTURES);
         if (captureCount % 3 != 0) return;
 
-        // Find empty squares on white's back rank (row 7)
         List<Integer> emptyCols = new ArrayList<>();
         for (int c = 0; c < 8; c++) {
-            if (state.board[7][c] == null) {
-                emptyCols.add(c);
-            }
+            if (state.board[7][c] == null) emptyCols.add(c);
         }
         if (emptyCols.isEmpty()) return;
 
         // Deterministic spawn
         int seed = captureCount * 17 + state.moveHistory.size();
-        int colIdx = Math.abs(seed) % emptyCols.size();
-        int col = emptyCols.get(colIdx);
-
-        // Random piece type
+        int col = emptyCols.get(Math.abs(seed) % emptyCols.size());
         Piece spawned;
-        int pieceType = Math.abs(seed * 31) % 3;
-        switch (pieceType) {
+        switch (Math.abs(seed * 31) % 3) {
             case 0: spawned = new Knight(true); break;
             case 1: spawned = new Bishop(true); break;
             default: spawned = new Rook(true); break;
         }
-
         state.board[7][col] = spawned;
-        System.out.println("SOUL HARVEST: Spawned " + spawned.getName() + " at (7," + col + ")!");
     }
 }

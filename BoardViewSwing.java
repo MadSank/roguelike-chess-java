@@ -61,14 +61,27 @@ public class BoardViewSwing extends JPanel {
                 repaint();
             }
         } else {
+            // Normal moves land on the clicked square; sniper shots target it from a distance.
             List<Move> matching = new ArrayList<>();
+            Move snipe = null;
             for (Move move : legalMoves) {
-                if (move.toRow == row && move.toCol == col) matching.add(move);
+                if (move.isSniperShot) {
+                    if (move.sniperTargetRow == row && move.sniperTargetCol == col) snipe = move;
+                } else if (move.toRow == row && move.toCol == col) {
+                    matching.add(move);
+                }
             }
-            if (!matching.isEmpty()) {
-                Move chosen = matching.size() > 1 && matching.get(0).isPromotion
-                    ? askPromotion(matching)
-                    : matching.get(0);
+            if (!matching.isEmpty() || snipe != null) {
+                Move chosen;
+                if (snipe != null && !matching.isEmpty()) {
+                    chosen = askSnipeOrMove(snipe, matching.get(0));
+                } else if (snipe != null) {
+                    chosen = snipe;
+                } else if (matching.size() > 1 && matching.get(0).isPromotion) {
+                    chosen = askPromotion(matching);
+                } else {
+                    chosen = matching.get(0);
+                }
                 clearSelection();
                 if (chosen != null) app.onPlayerMove(chosen);
                 return;
@@ -79,6 +92,15 @@ public class BoardViewSwing extends JPanel {
                 repaint();
             } else { clearSelection(); }
         }
+    }
+
+    /** Sniper Bishops: shoot from where you stand, or move onto the square and capture. */
+    private Move askSnipeOrMove(Move snipe, Move capture) {
+        String[] labels = {"Snipe (stay put)", "Move and capture"};
+        int pick = JOptionPane.showOptionDialog(this, "How should the bishop take this piece?", "Sniper Bishops",
+            JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, labels, labels[0]);
+        if (pick < 0) return null;
+        return pick == 0 ? snipe : capture;
     }
 
     /** Lets the player pick the promotion piece; returns null if the dialog is closed. */

@@ -6,6 +6,9 @@ import java.util.List;
  * Abstract base class for all roguelike cards.
  * Cards use hook methods — override only the hooks you need.
  * All hooks have default no-op implementations for minimal overhead.
+ *
+ * Cards must not keep mutable fields: card instances are shared between the real game and
+ * the AI's simulated positions. Keep per-game state in GameState (e.g. cardCounters).
  */
 public abstract class Card implements Serializable {
     private static final long serialVersionUID = 1L;
@@ -70,6 +73,30 @@ public abstract class Card implements Serializable {
      */
     public boolean canPieceAttackSquare(Piece piece, int fromRow, int fromCol,
             int toRow, int toCol, GameState state) {
+        return false;
+    }
+
+    /**
+     * Stops an attack from capturing ordinary chess-style (e.g. Heavy Armor turns the first
+     * hit into a stun). Called before the board changes. Return true to cancel the capture:
+     * the attacker then stays on its square and the target stays on the board.
+     * (targetRow, targetCol) is where the attacked piece stands.
+     */
+    public boolean interceptCapture(GameState state, Move move, int targetRow, int targetCol) {
+        return false;
+    }
+
+    /**
+     * Removes an attack the piece would normally have, for check detection
+     * (e.g. Trench Warfare: no attacking backwards). Default: never blocks.
+     */
+    public boolean blocksAttack(Piece piece, int fromRow, int fromCol,
+            int toRow, int toCol, GameState state) {
+        return false;
+    }
+
+    /** True if this card wants onKingInCheck calls (checking for check costs time). */
+    public boolean reactsToCheck() {
         return false;
     }
 

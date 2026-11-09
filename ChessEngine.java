@@ -76,16 +76,27 @@ public class ChessEngine {
         }
 
         Piece mover = s.board[move.fromRow][move.fromCol];
-        Piece captured;
+        int targetRow, targetCol;
         if (move.isSniperShot) {
-            captured = s.board[move.sniperTargetRow][move.sniperTargetCol];
+            targetRow = move.sniperTargetRow;
+            targetCol = move.sniperTargetCol;
         } else if (move.isEnPassant) {
-            captured = s.board[move.fromRow][move.toCol];
+            targetRow = move.fromRow;
+            targetCol = move.toCol;
         } else {
-            captured = s.board[move.toRow][move.toCol];
+            targetRow = move.toRow;
+            targetCol = move.toCol;
         }
+        Piece captured = s.board[targetRow][targetCol];
 
-        performMoveOnState(s, move);
+        // Card: a capture can be cancelled (Heavy Armor turns the first hit into a stun).
+        boolean intercepted = captured != null && s.cardManager != null
+            && s.cardManager.interceptCapture(s, move, targetRow, targetCol);
+        if (intercepted) {
+            captured = null; // attacker stays put, target stays on the board
+        } else {
+            performMoveOnState(s, move);
+        }
 
         // Card: capture side-effects (Golden Edge, Glass Cannons, Necromancer, Soul Harvest)
         if (captured != null && s.cardManager != null) {
@@ -98,7 +109,8 @@ public class ChessEngine {
         }
 
         s.enPassantTarget = null;
-        if (!move.isSniperShot && mover instanceof Pawn && Math.abs(move.toRow - move.fromRow) == 2) {
+        if (!move.isSniperShot && !intercepted && mover instanceof Pawn
+                && Math.abs(move.toRow - move.fromRow) == 2) {
             s.enPassantTarget = new Square((move.fromRow + move.toRow) / 2, move.toCol);
         }
 
@@ -120,6 +132,12 @@ public class ChessEngine {
         }
 
         s.whiteToMove = !s.whiteToMove;
+
+        // Card: react to a king being put in check (Phantom King teleport)
+        if (s.cardManager != null && s.cardManager.reactsToCheck() && isKingInCheck(s, s.whiteToMove)) {
+            s.cardManager.onKingInCheck(s, s.whiteToMove, this);
+        }
+
         s.piecesLeftStanding = Utils.countPiecesOnBoard(s);
         s.positionHistory.add(s.positionKey());
     }
@@ -295,6 +313,12 @@ public class ChessEngine {
     }
 
     private boolean canPieceAttackSquare(Piece piece, int fromRow, int fromCol, int toRow, int toCol, GameState gs) {
+        if (!attacksSquare(piece, fromRow, fromCol, toRow, toCol, gs)) return false;
+        // Card hook: attacks a card forbids (e.g. Trench Warfare: nothing attacks backwards)
+        return gs.cardManager == null || !gs.cardManager.blocksAttack(piece, fromRow, fromCol, toRow, toCol, gs);
+    }
+
+    private boolean attacksSquare(Piece piece, int fromRow, int fromCol, int toRow, int toCol, GameState gs) {
         int dr = Math.abs(toRow - fromRow);
         int dc = Math.abs(toCol - fromCol);
         if (piece instanceof Pawn) {

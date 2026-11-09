@@ -39,7 +39,6 @@ public class CardNecromancerGambit extends Card {
             int[] pos = pawnPositions.get(idx);
             state.board[pos[0]][pos[1]] = new Queen(true);
             state.necromancerUsed = true;
-            System.out.println("NECROMANCER: Pawn at (" + pos[0] + "," + pos[1] + ") promoted to Queen!");
         }
     }
 }

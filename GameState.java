@@ -54,6 +54,13 @@ public class GameState implements Serializable {
     /** Total move counter for cards like Chrono Shift. */
     public int totalMoveCount;
 
+    /**
+     * Per-game counters and flags used by cards (e.g. "chronoShift.moves", "phantomKing.used").
+     * Cards themselves hold no state, so copying a GameState copies all card state too and the
+     * AI's search can never change the real game.
+     */
+    public Map<String, Integer> cardCounters;
+
     public GameState() {
         board = new Piece[8][8];
         whiteToMove = true;
@@ -80,6 +87,7 @@ public class GameState implements Serializable {
         necromancerUsed = false;
         vaultingPieceSquare = -1;
         totalMoveCount = 0;
+        cardCounters = new HashMap<>();
     }
 
     /** Deep copy: pieces, lists, maps and card state are all independent of the original. */
@@ -122,6 +130,23 @@ public class GameState implements Serializable {
         necromancerUsed = other.necromancerUsed;
         vaultingPieceSquare = other.vaultingPieceSquare;
         totalMoveCount = other.totalMoveCount;
+        cardCounters = new HashMap<>(other.cardCounters != null ? other.cardCounters : Collections.emptyMap());
+    }
+
+    /** Current value of a card counter (0 if never set). */
+    public int getCounter(String key) {
+        return cardCounters.getOrDefault(key, 0);
+    }
+
+    public void setCounter(String key, int value) {
+        cardCounters.put(key, value);
+    }
+
+    /** Adds one to a card counter and returns the new value. */
+    public int incrementCounter(String key) {
+        int v = getCounter(key) + 1;
+        cardCounters.put(key, v);
+        return v;
     }
 
     /** Sets the result and keeps gameOver / gameResult in sync. */

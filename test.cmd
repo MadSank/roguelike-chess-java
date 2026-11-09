@@ -9,7 +9,7 @@ if errorlevel 1 (
     exit /b 1
 )
 set FAILED=0
-for %%T in (TestPerft TestRules) do (
+for %%T in (TestPerft TestRules TestCards) do (
     java -cp out %%T
     if errorlevel 1 set FAILED=1
 )
