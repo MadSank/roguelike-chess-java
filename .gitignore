@@ -1,11 +1,26 @@
+# Compiled class files
+*.class
+*.jar
+
+# BlueJ files (BlueJ regenerates these when the folder is opened)
 *.ctxt
 package.bluej
 
-*.class
+# Game saves / high scores (Java-serialized, local to each player)
+highscores.dat
 
-Thumbs.db
-.DS_Store
+# Logs
+*.log
 
+# IDE folders
 .idea/
 *.iml
 .vscode/
+
+# OS files
+Thumbs.db
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+.DS_Store
