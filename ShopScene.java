@@ -116,6 +116,8 @@ public class ShopScene extends JPanel {
     private void act(ShopManager.Result r, String success) {
         status = r == ShopManager.Result.OK ? success : r.message;
         if (r == ShopManager.Result.OK) AudioPlayer.playMoveSound();
+        // The dealer you're facing nods at a deal or shakes his head at a refusal.
+        scene.react(r == ShopManager.Result.OK ? "yes" : "no");
     }
 
     private void handleClick(Point p) {
@@ -123,7 +125,11 @@ public class ShopScene extends JPanel {
         for (int i = buttons.size() - 1; i >= 0; i--) {
             Button b = buttons.get(i);
             if (b.area.contains(p)) {
-                if (b.enabled) b.action.run();
+                if (b.enabled) {
+                    b.action.run();
+                } else if (!scene.isMoving() && !scene.getView().equals("table")) {
+                    scene.react("no"); // can't afford it (or nothing to sell): the dealer shakes his head
+                }
                 repaint();
                 return;
             }

@@ -19,6 +19,10 @@ public class RoguelikeChessAppSwing extends JFrame {
     private final IntroScene introScene;
     /** True while the AI is searching on a background thread. */
     private boolean aiThinking;
+    /** True while the opponent reacts to the end of a round, before the summary shows. */
+    private boolean roundEnding;
+    /** How long the opponent's win/lose reaction plays before the round summary, in ms. */
+    private static final int END_REACTION_MS = 1700;
 
     public RoguelikeChessAppSwing() {
         super("Ashes of the Board - Roguelike Chess");
@@ -68,6 +72,8 @@ public class RoguelikeChessAppSwing extends JFrame {
 
     private void showBoard() {
         aiThinking = false;
+        roundEnding = false;
+        boardView.setOpponentThinking(false);
         boardView.refresh();
         sceneLayout.show(sceneContainer, "BOARD");
         AudioPlayer.playMusic("battle.wav", true);
@@ -166,6 +172,7 @@ public class RoguelikeChessAppSwing extends JFrame {
         for (MoveBonuses.Bonus b : bonuses) boardView.showToast(b.toString() + " gold");
         for (String e : run.takeEvents()) boardView.showToast(e);
         boardView.refresh();
+        if (move.isCapture && !run.isRoundOver()) boardView.opponentReact("hurt");
 
         if (run.isRoundOver()) {
             endRound();
@@ -179,6 +186,7 @@ public class RoguelikeChessAppSwing extends JFrame {
         final GameState snapshot = run.getRoundState().copy();
         final ChessEngine roundEngine = run.getEngine();
         aiThinking = true;
+        boardView.setOpponentThinking(true);
         boardView.refresh();
 
         new SwingWorker<Move, Void>() {
@@ -190,6 +198,7 @@ public class RoguelikeChessAppSwing extends JFrame {
             @Override
             protected void done() {
                 aiThinking = false;
+                boardView.setOpponentThinking(false);
                 if (roundEngine != run.getEngine()) return; // round changed meanwhile
                 Move m;
                 try {
@@ -206,12 +215,35 @@ public class RoguelikeChessAppSwing extends JFrame {
                 AudioPlayer.playMoveSound();
                 if (m.isCapture) AudioPlayer.playCaptureSound();
                 boardView.refresh();
+                if (!run.isRoundOver()) {
+                    GameState st = run.getRoundState();
+                    if (run.getEngine().isKingInCheck(st, true)) boardView.opponentReact("check");
+                    else if (m.isCapture) boardView.opponentReact("capture");
+                }
                 if (run.isRoundOver()) endRound();
             }
         }.execute();
     }
 
+    /** The round is over: the opponent reacts (if rendered), then the summary shows. */
     private void endRound() {
+        if (roundEnding) return;
+        GameResult result = run.getRoundState().result;
+        if (!boardView.hasOpponentPortrait() || (result != GameResult.WHITE_WINS && result != GameResult.BLACK_WINS)) {
+            showRoundSummary();
+            return;
+        }
+        roundEnding = true;
+        boardView.opponentReact(result == GameResult.BLACK_WINS ? "win" : "lose");
+        javax.swing.Timer t = new javax.swing.Timer(END_REACTION_MS, e -> {
+            roundEnding = false;
+            showRoundSummary();
+        });
+        t.setRepeats(false);
+        t.start();
+    }
+
+    private void showRoundSummary() {
         RunController.RoundSummary s = run.finishRound();
         StringBuilder msg = new StringBuilder();
         String title;

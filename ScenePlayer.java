@@ -11,6 +11,11 @@ import java.util.List;
  *
  * The camera works like Buckshot Roulette's: a few fixed views around the player's seat
  * (card dealer, table, piece dealer, reseller) with rendered turns between neighbours.
+ *
+ * While the camera rests on a view, its idle loop plays (<view>_idle). A reaction
+ * (<view>_<name>, e.g. card_yes) cuts in from the loop and hands back to it at frame 0; both
+ * are rendered from the same breathing cycle, so neither cut jumps. A mood swaps the loop
+ * for another one (e.g. opponent_think) at the next loop boundary.
  */
 public class ScenePlayer {
     /** The views around the seat, in turning order (turning right moves forward). */
@@ -31,6 +36,11 @@ public class ScenePlayer {
 
     /** Position in the current view's idle loop (if it has one). */
     private int idleFrame;
+    /** The loop playing now (e.g. "idle" or "think") and the one wanted at the next boundary. */
+    private String loop = "idle", wantedLoop = "idle";
+    /** A one-off reaction playing over the idle (null = none). */
+    private SceneClip reaction;
+    private int reactionFrame;
     private float flicker = 1f;
     private final BufferedImage[] grain = new BufferedImage[4];
     private final BufferedImage[] fineGrain = new BufferedImage[4];
@@ -65,10 +75,35 @@ public class ScenePlayer {
         return playing != null;
     }
 
+    /**
+     * Plays the current view's reaction clip once (e.g. "yes" plays card_yes), then returns to
+     * the loop. Ignored while the camera is turning or if the clip wasn't rendered.
+     */
+    public void react(String name) {
+        if (playing != null) return;
+        SceneClip c = SceneClip.load(view + "_" + name);
+        if (c == null) return;
+        reaction = c;
+        reactionFrame = 0;
+        c.prefetch(0, 1);
+    }
+
+    /** Loops the current view's <view>_<name> clip instead of its idle (null = back to the idle). */
+    public void setMood(String name) {
+        wantedLoop = name == null ? "idle" : name;
+    }
+
+    /** The loop clip to play now (the mood if it was rendered, otherwise the idle). */
+    private SceneClip loopClip() {
+        SceneClip c = SceneClip.load(view + "_" + loop);
+        return c != null ? c : SceneClip.load(view + "_idle");
+    }
+
     /** Jumps straight to a view (no animation). */
     public void setView(String name) {
         queue.clear();
         playing = null;
+        reaction = null;
         view = name;
         host.repaint();
     }
@@ -115,6 +150,7 @@ public class ScenePlayer {
             if (r != null) r.run();
             return;
         }
+        reaction = null;
         playing = (SceneClip) next[0];
         reverse = (Boolean) next[1];
         view = (String) next[2];
@@ -134,18 +170,34 @@ public class ScenePlayer {
         long now = System.currentTimeMillis();
         // The lamp flickers now and then.
         flicker = rng.nextInt(40) == 0 ? 0.8f + rng.nextFloat() * 0.1f : Math.min(1f, flicker + 0.05f);
-        SceneClip idle = playing == null ? SceneClip.load(view + "_idle") : null;
+        SceneClip idle = playing == null ? loopClip() : null;
         if (playing != null) {
             frame++;
             if (frame >= playing.frameCount()) startNext(view);
             else prefetch();
+        } else if (reaction != null) {
+            reactionFrame++;
+            if (reactionFrame >= reaction.frameCount()) {
+                // Back to the loop at its first frame (the reaction ends where the loop starts).
+                reaction = null;
+                idleFrame = 0;
+                loop = wantedLoop;
+            } else {
+                reaction.prefetch(reactionFrame, 1);
+            }
         } else if (idle != null) {
             // Resting on a view with an idle loop (a dealer breathing): keep it moving.
             idleFrame = (idleFrame + 1) % idle.frameCount();
-            idle.prefetch(idleFrame, 1);
-            if (idleFrame + 10 >= idle.frameCount()) idle.prefetch(-1, 1); // wrap-around frames
+            if (idleFrame == 0 && !loop.equals(wantedLoop)) {
+                loop = wantedLoop;  // switch moods only at the loop boundary, so nothing jumps
+                idle = loopClip();
+            }
+            if (idle != null) {
+                idle.prefetch(idleFrame, 1);
+                if (idleFrame + 10 >= idle.frameCount()) idle.prefetch(-1, 1); // wrap-around frames
+            }
         }
-        if (playing != null || idle != null || now - lastTick > 80) { // stills: animate grain at ~12 fps
+        if (playing != null || reaction != null || idle != null || now - lastTick > 80) { // stills: animate grain at ~12 fps
             lastTick = now;
             host.repaint();
         }
@@ -157,10 +209,26 @@ public class ScenePlayer {
             int i = reverse ? playing.frameCount() - 1 - frame : frame;
             return playing.frame(i);
         }
-        SceneClip idle = SceneClip.load(view + "_idle");
+        if (reaction != null) return reaction.frame(Math.min(reactionFrame, reaction.frameCount() - 1));
+        SceneClip idle = loopClip();
         if (idle != null) return idle.frame(idleFrame % idle.frameCount());
         SceneClip still = SceneClip.load(view);
         return still == null ? null : still.frame(0);
+    }
+
+    /** Draws the scene into a rectangle (e.g. a small portrait), clipped to it. */
+    public boolean paint(Graphics2D g, int x, int y, int w, int h) {
+        Graphics2D g2 = (Graphics2D) g.create(x, y, w, h);
+        try {
+            return paint(g2, w, h);
+        } finally {
+            g2.dispose();
+        }
+    }
+
+    /** True if the given clip of the current view was rendered (e.g. "idle"). */
+    public boolean hasClip(String name) {
+        return SceneClip.load(view + "_" + name) != null;
     }
 
     /** Draws the scene filling the area, plus the film look. Returns false if there is no scene. */

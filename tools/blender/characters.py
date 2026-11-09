@@ -271,31 +271,139 @@ def _rigid(obj, rig, bone_name):
     _bind(obj, rig, lambda co: {bone_name: 1.0})
 
 
-def _idle(rig, seed, energy=1.0):
-    """A seamless 48-frame idle: breathing in the chest, a slight sway, a slow head tilt."""
-    rig.animation_data_create()
-    action = bpy.data.actions.new(rig.name + "_idle")
-    rig.animation_data.action = action
+def _plant_hands(rig):
+    """Keeps the hands where they rest (on the table) while the body leans: IK on each arm,
+    aiming at an empty placed at the wrist and parented to the rig (not to a bone)."""
+    for side in ("R", "L"):
+        bone = rig.data.bones["lower." + side]
+        target = bpy.data.objects.new("%s_hand_%s" % (rig.name, side), None)
+        bpy.context.collection.objects.link(target)
+        target.empty_display_size = 0.03
+        target.parent = rig
+        target.location = bone.tail_local
+        ik = rig.pose.bones["lower." + side].constraints.new("IK")
+        ik.target = target
+        ik.chain_count = 2
+
+
+def _idle_pose(pb, f, seed, energy, extra=None):
+    """Sets the idle pose for frame offset f (0..48), plus extra {bone: (x, y, z) radians}.
+    For the spine, chest, neck and head (bones pointing up): positive x bows forward,
+    y turns the head left/right, z tilts it to the side."""
+    t = 2 * math.pi * f / IDLE_FRAMES
+    phase = seed * 0.7
+    rots = {
+        "spine": (0, math.radians(0.8 * energy) * math.sin(t + phase), 0),
+        "chest": (math.radians(1.6 * energy) * math.sin(t), 0, 0),
+        "neck": (0, 0, 0),
+        "head": (math.radians(2.5 * energy) * math.sin(t + 1.0 + phase),
+                 math.radians(3.0 * energy) * math.sin(t + phase),
+                 math.radians(2.0 * energy) * math.sin(t + 2.0)),
+    }
+    for side in ("R", "L"):
+        rots["upper." + side] = (math.radians(1.0 * energy) * math.sin(t + 0.5), 0, 0)
+        rots["lower." + side] = (0, 0, 0)
+    for name, add in (extra or {}).items():
+        add = (-add[0], add[1], add[2])  # a bone's +x rotation leans it back; extras use +x = forward
+        rots[name] = tuple(a + b for a, b in zip(rots[name], add))
+    for name, r in rots.items():
+        pb[name].rotation_euler = r
+    pb["chest"].scale = (1 + 0.012 * energy * (1 + math.sin(t)) / 2,) * 3
+
+
+def _bake(rig, action_name, frames, extra_fn=None, step=2, cyclic=False):
+    """Keys the idle (plus extra_fn(u) offsets, u = 0..1 over the clip) into a new action."""
+    if not rig.animation_data:
+        rig.animation_data_create()
+    action = bpy.data.actions.new(action_name)
+    _assign(rig, action)
     pb = rig.pose.bones
     for b in pb:
         b.rotation_mode = "XYZ"
-    phase = seed * 0.7
-    for f in range(0, IDLE_FRAMES + 1, 4):
-        t = 2 * math.pi * f / IDLE_FRAMES
-        pb["spine"].rotation_euler = (0, math.radians(0.8 * energy) * math.sin(t + phase), 0)
-        pb["chest"].rotation_euler = (math.radians(1.6 * energy) * math.sin(t), 0, 0)
-        pb["chest"].scale = (1 + 0.012 * energy * (1 + math.sin(t)) / 2,) * 3
-        pb["head"].rotation_euler = (math.radians(2.5 * energy) * math.sin(t + 1.0 + phase),
-                                     math.radians(3.0 * energy) * math.sin(t * 1 + phase),
-                                     math.radians(2.0 * energy) * math.sin(t + 2.0))
-        for side in ("R", "L"):
-            pb["upper." + side].rotation_euler = (math.radians(1.0 * energy) * math.sin(t + 0.5), 0, 0)
+    seed, energy = rig["seed"], rig["energy"]
+    for f in range(0, frames + 1, step):
+        _idle_pose(pb, f % IDLE_FRAMES, seed, energy, extra_fn(f / frames) if extra_fn else None)
         for b in pb:
             b.keyframe_insert("rotation_euler", frame=f + 1)
         pb["chest"].keyframe_insert("scale", frame=f + 1)
-    # Repeat forever (so longer clips like the intro keep breathing).
-    for fc in _fcurves(action):
-        fc.modifiers.new("CYCLES")
+    if cyclic:  # repeat forever (so longer clips like the intro keep breathing)
+        for fc in _fcurves(action):
+            fc.modifiers.new("CYCLES")
+    return action
+
+
+def _assign(rig, action):
+    rig.animation_data.action = action
+    ad = rig.animation_data
+    if hasattr(ad, "action_slot") and getattr(action, "slots", None) and len(action.slots):
+        ad.action_slot = action.slots[0]
+
+
+def _idle(rig, seed, energy=1.0):
+    """A seamless 48-frame idle: breathing in the chest, a slight sway, a slow head tilt."""
+    rig["seed"], rig["energy"] = seed, energy
+    rig["idle_action"] = _bake(rig, rig.name + "_idle", IDLE_FRAMES, step=4, cyclic=True).name
+
+
+# ─── REACTIONS ───────────────────────────────────────────────────────────────
+# Each reaction lasts REACTION_FRAMES (a whole number of idle loops) and is the idle plus an
+# extra motion that starts and ends at zero, so the game can cut from the idle loop into a
+# reaction and back without a jump.
+REACTION_FRAMES = 48
+_D = math.radians
+
+
+def _bell(u):
+    """0 -> 1 -> 0 smoothly."""
+    return math.sin(math.pi * u) ** 2
+
+
+def _hold(u, rise=0.25, fall=0.8):
+    """Rises quickly, holds, and settles back at the very end."""
+    def smooth(a, b, x):
+        x = max(0.0, min(1.0, (x - a) / (b - a)))
+        return x * x * (3 - 2 * x)
+    return smooth(0, rise, u) * (1 - smooth(fall, 1, u))
+
+
+def _snap(u):
+    """Fast reaction that peaks early (a flinch) and eases out."""
+    return math.sin(math.pi * math.sqrt(u)) ** 2
+
+
+REACTIONS = {
+    # Dealers: a deal (two nods and a small bow) or a refusal (a slow shake of the head).
+    "yes": lambda u: {"head": (_D(11) * _bell(u) * (0.5 - 0.5 * math.cos(4 * math.pi * u)), 0, 0),
+                      "chest": (_D(5) * _bell(u), 0, 0)},
+    "no": lambda u: {"head": (_D(-3) * _bell(u), _D(16) * _bell(u) * math.sin(6 * math.pi * u), 0),
+                     "chest": (_D(-2) * _bell(u), 0, 0)},
+    # Opponent.
+    "think": lambda u: {"head": (_D(12) * _bell(u), _D(6) * math.sin(2 * math.pi * u) * _bell(u), _D(9) * _bell(u)),
+                        "chest": (_D(4) * _bell(u), 0, 0)},
+    "capture": lambda u: {"chest": (_D(7) * _hold(u), 0, 0),
+                          "head": (_D(-4) * _hold(u), 0, _D(13) * _hold(u))},
+    "hurt": lambda u: {"spine": (_D(-3) * _snap(u), 0, 0),
+                       "chest": (_D(-6) * _snap(u), 0, 0),
+                       "head": (_D(-10) * _snap(u), _D(7) * _snap(u) * math.sin(5 * math.pi * u), 0)},
+    "check": lambda u: {"chest": (_D(9) * _hold(u), 0, 0),
+                        "head": (_D(-6) * _hold(u), 0, _D(-10) * _hold(u))},
+    "win": lambda u: {"spine": (_D(-4) * _hold(u), 0, 0),
+                      "chest": (_D(-7) * _hold(u) + _D(2.5) * _hold(u) * math.sin(10 * math.pi * u), 0, 0),
+                      "head": (_D(-14) * _hold(u), 0, _D(5) * _hold(u))},
+    "lose": lambda u: {"spine": (_D(6) * _hold(u, 0.35, 0.85), 0, 0),
+                       "chest": (_D(14) * _hold(u, 0.35, 0.85), 0, 0),
+                       "head": (_D(22) * _hold(u, 0.35, 0.85), 0, _D(-6) * _hold(u, 0.35, 0.85))},
+}
+
+
+def react(rig, name):
+    """Switches the rig to a reaction (made once, then reused). name=None goes back to the idle."""
+    if name is None:
+        _assign(rig, bpy.data.actions[rig["idle_action"]])
+        return
+    key = "%s_%s" % (rig.name, name)
+    action = bpy.data.actions.get(key) or _bake(rig, key, REACTION_FRAMES, REACTIONS[name])
+    _assign(rig, action)
 
 
 def _fcurves(action):
@@ -386,6 +494,8 @@ def build_character(name, pos, facing, mood="smile", seed=1, seated=False, pose=
         _bind(sl, rig, arm_w)
         _rigid(gl, rig, "lower." + side)
 
+    if pose == "table":
+        _plant_hands(rig)
     _idle(rig, seed, energy=0.7 if seated else 1.0)
     rig.location = pos
     rig.rotation_euler = (0, 0, facing)

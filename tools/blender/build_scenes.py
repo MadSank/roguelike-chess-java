@@ -9,7 +9,10 @@ Options after "--":
     --only NAME,...   render only these clips (e.g. --only table,card,intro)
 
 Output: resources/scenes/<clip>/frame_0001.jpg ... at 1280x720 (ignored by git).
-Clips: still views table / card / piece / resell, the turns between neighbouring views, and the intro.
+Clips: still views table / card / piece / resell, the turns between neighbouring views, the intro,
+the dealers' idle loops and reactions (<view>_idle, <view>_yes, <view>_no), and the opponent close-up
+shown beside the board during play (opponent_idle plus think / capture / hurt / check / win / lose,
+rendered at half resolution because the game shows it small).
 
 The set: a brick cellar under one hanging lamp; the player's seat at a round table facing a
 masked opponent; three masked dealers around the seat (card dealer left, piece dealer right,
@@ -41,6 +44,9 @@ SEAT = Vector((0.0, -0.95, 0.0))
 EYE_SEATED = 1.15
 EYE_STANDING = 1.62
 OPPONENT = Vector((0.0, 1.0, 0.0))
+RIGS = {}  # view name -> the character seen in it (for reactions)
+DEALER_REACTIONS = ["yes", "no"]
+OPPONENT_REACTIONS = ["think", "capture", "hurt", "check", "win", "lose"]
 CARD_DEALER = Vector((-1.55, -0.9, 0.0))
 PIECE_DEALER = Vector((1.55, -0.9, 0.0))
 RESELLER = Vector((0.95, -2.45, 0.0))
@@ -115,10 +121,10 @@ def build_set():
     # The opponent and the three dealers.
     cmats = {"wool": characters.wool_material("wool"), "capelet": characters.wool_material("capelet", (0.01, 0.009, 0.008)),
              "glove": characters.leather_material("glove"), "void": characters.void_material("void")}
-    characters.build_character("opponent", OPPONENT, math.pi, mood="sad", seed=5, seated=True, pose="table", mats=cmats)
-    characters.build_character("card_dealer", CARD_DEALER, yaw_to(CARD_DEALER, SEAT), mood="smile", seed=2, pose="offering", mats=cmats)
-    characters.build_character("piece_dealer", PIECE_DEALER, yaw_to(PIECE_DEALER, SEAT), mood="sad", seed=7, pose="clasped", mats=cmats)
-    characters.build_character("reseller", RESELLER, yaw_to(RESELLER, SEAT), mood="smile", seed=11, pose="clasped", height=0.95, mats=cmats)
+    RIGS["opponent"] = characters.build_character("opponent", OPPONENT, math.pi, mood="sad", seed=5, seated=True, pose="table", mats=cmats)
+    RIGS["card"] = characters.build_character("card_dealer", CARD_DEALER, yaw_to(CARD_DEALER, SEAT), mood="smile", seed=2, pose="offering", mats=cmats)
+    RIGS["piece"] = characters.build_character("piece_dealer", PIECE_DEALER, yaw_to(PIECE_DEALER, SEAT), mood="sad", seed=7, pose="clasped", mats=cmats)
+    RIGS["resell"] = characters.build_character("reseller", RESELLER, yaw_to(RESELLER, SEAT), mood="smile", seed=11, pose="clasped", height=0.95, mats=cmats)
 
     # Card dealer: a small stand with candles and a fan of cards.
     stand = Vector((-1.05, -0.62, 0))
@@ -180,6 +186,8 @@ def build_views(top):
         "card": pose(eye, CARD_DEALER + Vector((0.2, 0.08, 1.36))),
         "piece": pose(eye, PIECE_DEALER + Vector((-0.2, 0.08, 1.36))),
         "resell": pose(eye, RESELLER + Vector((0.15, -0.15, 1.3))),
+        # Close-up of the opponent across the board (shown small beside the board during play).
+        "opponent": pose(Vector((0.0, -0.3, 1.5)), OPPONENT + Vector((0, 0, 1.5))),
     }
 
 
@@ -208,10 +216,11 @@ def clear_keys(cam):
     cam.data.animation_data_clear()
 
 
-def render_clip(name, frames):
+def render_clip(name, frames, half=False):
     if ONLY and name not in ONLY:
         return
     sc = bpy.context.scene
+    sc.render.resolution_percentage = 50 if half else 100
     folder = os.path.join(OUT, name)
     os.makedirs(folder, exist_ok=True)
     for f in os.listdir(folder):
@@ -229,10 +238,21 @@ def render_all(cam, views):
     for name, (loc, rot, focus) in views.items():
         clear_keys(cam)
         key(cam, 1, loc, rot, focus)
-        render_clip(name, 1)
-        # The dealer views also get a seamless idle loop (the dealer breathing and shifting).
-        if name != "table":
-            render_clip(name + "_idle", max(2, characters.IDLE_FRAMES // q))
+        cam.data.lens = 45 if name == "opponent" else 28
+        half = name == "opponent"
+        if name != "opponent":
+            render_clip(name, 1)
+        if name == "table":
+            continue
+        # The dealer views and the opponent close-up get a seamless idle loop and reactions.
+        render_clip(name + "_idle", max(2, characters.IDLE_FRAMES // q), half)
+        rig = RIGS[name]
+        for r in (OPPONENT_REACTIONS if name == "opponent" else DEALER_REACTIONS):
+            characters.react(rig, r)
+            render_clip("%s_%s" % (name, r), max(2, characters.REACTION_FRAMES // q), half)
+        characters.react(rig, None)
+    cam.data.lens = 28
+    views = {k: v for k, v in views.items() if k != "opponent"}
 
     for i, a in enumerate(RING):
         b = RING[(i + 1) % len(RING)]

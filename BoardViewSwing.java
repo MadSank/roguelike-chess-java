@@ -37,6 +37,8 @@ public class BoardViewSwing extends JPanel {
     private final Timer toastTimer;
     /** The rendered room behind the board (falls back to plain colours if not rendered). */
     private final ScenePlayer scene;
+    /** Close-up of the masked opponent above the hand, reacting to the game (if rendered). */
+    private final ScenePlayer portrait;
 
     private static final Color DARK_SQ = new Color(26, 26, 46);
     private static final Color LIGHT_SQ = new Color(22, 33, 62);
@@ -57,6 +59,8 @@ public class BoardViewSwing extends JPanel {
         setBackground(BG);
         scene = new ScenePlayer(this);
         scene.setView("table");
+        portrait = new ScenePlayer(this);
+        portrait.setView("opponent");
         addMouseListener(new MouseAdapter() {
             @Override public void mouseClicked(MouseEvent e) {
                 for (int i = 0; i < handButtons.size(); i++) {
@@ -89,6 +93,21 @@ public class BoardViewSwing extends JPanel {
         toasts.add(new Object[]{text, System.currentTimeMillis()});
         if (!toastTimer.isRunning()) toastTimer.start();
         repaint();
+    }
+
+    /** The opponent reacts (think, capture, hurt, check, win, lose); ignored if not rendered. */
+    public void opponentReact(String name) {
+        portrait.react(name);
+    }
+
+    /** While true, the opponent's thinking loop plays instead of the idle. */
+    public void setOpponentThinking(boolean thinking) {
+        portrait.setMood(thinking ? "think" : null);
+    }
+
+    /** True if the opponent close-up was rendered (so reactions are worth waiting for). */
+    public boolean hasOpponentPortrait() {
+        return portrait.hasClip("idle");
     }
 
     private void handleBoardClick(int row, int col) {
@@ -206,24 +225,34 @@ public class BoardViewSwing extends JPanel {
         g.fillRoundRect(x, 6, w, getHeight() - 12, 10, 10);
         g.setColor(new Color(80, 30, 40));
         g.drawRoundRect(x, 6, w, getHeight() - 12, 10, 10);
+        // The opponent, live, at the top of the panel.
+        int top = 0;
+        if (hasOpponentPortrait()) {
+            int pw = w - 12, ph = pw * 9 / 16;
+            if (portrait.paint(g, x + 6, 12, pw, ph)) {
+                g.setColor(new Color(80, 30, 40));
+                g.drawRect(x + 6, 12, pw, ph);
+                top = ph + 10;
+            }
+        }
         g.setFont(new Font("Serif", Font.BOLD, 15));
         g.setColor(CRIMSON);
-        g.drawString("HAND", x + 10, 28);
+        g.drawString("HAND", x + 10, top + 28);
         g.setFont(new Font("SansSerif", Font.PLAIN, 10));
         g.setColor(TEXT_DIM);
-        g.drawString("Playing a card is free.", x + 10, 44);
-        g.drawString("It lasts until the round ends.", x + 10, 56);
+        g.drawString("Playing a card is free.", x + 10, top + 44);
+        g.drawString("It lasts until the round ends.", x + 10, top + 56);
 
         List<Card> hand = run.getHand();
         if (hand.isEmpty()) {
-            g.drawString("No cards in hand.", x + 10, 80);
+            g.drawString("No cards in hand.", x + 10, top + 80);
             return;
         }
         boolean canPlay = state.whiteToMove && !state.gameOver && !app.isAiThinking();
-        int cardH = Math.min(78, (getHeight() - 76) / hand.size());
+        int cardH = Math.min(78, (getHeight() - 76 - top) / hand.size());
         for (int i = 0; i < hand.size(); i++) {
             Card c = hand.get(i);
-            int y = 66 + i * cardH;
+            int y = top + 66 + i * cardH;
             boolean played = run.isPlayed(c);
             g.setColor(played ? new Color(35, 28, 45) : new Color(25, 20, 32));
             g.fillRoundRect(x + 6, y, w - 12, cardH - 6, 8, 8);
