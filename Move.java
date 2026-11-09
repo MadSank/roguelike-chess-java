@@ -1,10 +1,8 @@
-
-
 import java.io.Serializable;
 import java.util.Objects;
 
 public class Move implements Serializable {
-    private static final long serialVersionUID = 1L;
+    private static final long serialVersionUID = 2L;
 
     public final int fromRow;
     public final int fromCol;
@@ -12,9 +10,9 @@ public class Move implements Serializable {
     public final int toCol;
 
     public boolean isCapture;
-    public boolean isCastle;
     public boolean isEnPassant;
     public boolean isPromotion;
+    /** "Q", "R", "B" or "N" when isPromotion. */
     public String promotionType;
 
     // ─── Sniper Bishops extension ────────────────────────────────
@@ -28,7 +26,6 @@ public class Move implements Serializable {
         this.toRow = toRow;
         this.toCol = toCol;
         this.isCapture = false;
-        this.isCastle = false;
         this.isEnPassant = false;
         this.isPromotion = false;
         this.promotionType = null;
@@ -44,14 +41,7 @@ public class Move implements Serializable {
 
     public Move copy() {
         Move m = new Move(fromRow, fromCol, toRow, toCol);
-        m.isCapture = isCapture;
-        m.isCastle = isCastle;
-        m.isEnPassant = isEnPassant;
-        m.isPromotion = isPromotion;
-        m.promotionType = promotionType;
-        m.isSniperShot = isSniperShot;
-        m.sniperTargetRow = sniperTargetRow;
-        m.sniperTargetCol = sniperTargetCol;
+        m.copyMetaFrom(this);
         return m;
     }
 
@@ -66,7 +56,6 @@ public class Move implements Serializable {
     public void copyMetaFrom(Move other) {
         if (other == null) return;
         this.isCapture = other.isCapture;
-        this.isCastle = other.isCastle;
         this.isEnPassant = other.isEnPassant;
         this.isPromotion = other.isPromotion;
         this.promotionType = other.promotionType;
@@ -114,7 +103,6 @@ public class Move implements Serializable {
     public String toString() {
         StringBuilder sb = new StringBuilder(toUCI());
         if (isCapture) sb.append("x");
-        if (isCastle) sb.append(" (castle)");
         if (isEnPassant) sb.append(" (ep)");
         if (isSniperShot) sb.append(" (snipe)");
         return sb.toString();

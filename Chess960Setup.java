@@ -40,20 +40,15 @@ public class Chess960Setup {
         setupBlackSide(state);
 
         state.whiteToMove = true;
-        state.gameOver = false;
-        state.gameResult = "";
+        state.setResult(GameResult.ONGOING, "");
         state.movesToEnd = 0;
         state.capturesMade = 0;
         state.specialMovesUsed = 0;
         state.piecesLeftStanding = Utils.countPiecesOnBoard(state);
         state.enPassantTarget = null;
-
-        state.whiteKingMoved = false;
-        state.whiteKingsideRookMoved = false;
-        state.whiteQueensideRookMoved = false;
-        state.blackKingMoved = false;
-        state.blackKingsideRookMoved = false;
-        state.blackQueensideRookMoved = false;
+        state.halfmoveClock = 0;
+        state.positionHistory.clear();
+        state.moveHistory.clear();
 
         System.out.println("=== CHESS960 SETUP COMPLETE ===");
         System.out.println("Total pieces on board: " + state.piecesLeftStanding);

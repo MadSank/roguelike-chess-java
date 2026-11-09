@@ -38,6 +38,15 @@ public class ShopManager {
         return savedGold;
     }
 
+    /** Clears everything carried over from a previous run: army, saved gold, card offers. */
+    public void resetForNewRun() {
+        savedGold = 0;
+        currentFaceUpCards = new ArrayList<>();
+        currentMysteryPack = new ArrayList<>();
+        mysteryPackPurchased = false;
+        initializeFreePawns();
+    }
+
     private void initializeFreePawns() {
         nextRound.clear();
         for (int i = 0; i < FREE_PAWNS; i++) {

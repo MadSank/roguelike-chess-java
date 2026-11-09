@@ -50,7 +50,9 @@ public class BoardViewSwing extends JPanel {
     }
 
     private void handleBoardClick(int row, int col) {
+        if (app.isAiThinking()) return;
         GameState state = engine.getGameState();
+        if (state.gameOver) return;
         Piece clickedPiece = state.board[row][col];
         if (selectedRow == -1) {
             if (clickedPiece != null && clickedPiece.isWhite() == state.whiteToMove) {
@@ -59,12 +61,17 @@ public class BoardViewSwing extends JPanel {
                 repaint();
             }
         } else {
+            List<Move> matching = new ArrayList<>();
             for (Move move : legalMoves) {
-                if (move.toRow == row && move.toCol == col) {
-                    app.onPlayerMove(move);
-                    clearSelection();
-                    return;
-                }
+                if (move.toRow == row && move.toCol == col) matching.add(move);
+            }
+            if (!matching.isEmpty()) {
+                Move chosen = matching.size() > 1 && matching.get(0).isPromotion
+                    ? askPromotion(matching)
+                    : matching.get(0);
+                clearSelection();
+                if (chosen != null) app.onPlayerMove(chosen);
+                return;
             }
             if (clickedPiece != null && clickedPiece.isWhite() == state.whiteToMove) {
                 selectedRow = row; selectedCol = col;
@@ -72,6 +79,19 @@ public class BoardViewSwing extends JPanel {
                 repaint();
             } else { clearSelection(); }
         }
+    }
+
+    /** Lets the player pick the promotion piece; returns null if the dialog is closed. */
+    private Move askPromotion(List<Move> promotions) {
+        String[] labels = {"Queen", "Rook", "Bishop", "Knight"};
+        String[] codes = {"Q", "R", "B", "N"};
+        int pick = JOptionPane.showOptionDialog(this, "Promote pawn to:", "Promotion",
+            JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, labels, labels[0]);
+        if (pick < 0) return null;
+        for (Move m : promotions) {
+            if (codes[pick].equals(m.promotionType)) return m;
+        }
+        return promotions.get(0);
     }
 
     private void clearSelection() {

@@ -1,38 +1,40 @@
-
-
 import java.io.Serializable;
 import java.util.*;
 
 /**
- * Complete game state snapshot - serializable for save/load
+ * Complete game state snapshot. The engine mutates it; the AI works on copies.
  */
 public class GameState implements Serializable {
-    private static final long serialVersionUID = 1L;
+    private static final long serialVersionUID = 2L;
+
     public Piece[][] board;
     public boolean whiteToMove;
     public int goldPlayer;
-    public int pawnResource;
-    
+
+    // Round statistics
     public int movesToEnd;
     public int capturesMade;
     public int specialMovesUsed;
     public int piecesLeftStanding;
-    
+
     public int aiDepth;
-    public Square bannedSquare;
     public Square enPassantTarget;
-    
+
     public String lastMoveUCI;
-    public boolean gameOver;
-    public String gameResult;
     public int roundNumber;
     public List<String> moveHistory;
-    public boolean whiteKingMoved;
-    public boolean whiteKingsideRookMoved;
-    public boolean whiteQueensideRookMoved;
-    public boolean blackKingMoved;
-    public boolean blackKingsideRookMoved;
-    public boolean blackQueensideRookMoved;
+
+    // ─── GAME END ───────────────────────────────────────────────
+    public GameResult result;
+    /** Kept in sync with result; true once the game has ended. */
+    public boolean gameOver;
+    /** Human-readable result, e.g. "1-0 (White mates)" or "1/2-1/2 (50-move rule)". */
+    public String gameResult;
+
+    /** Plies since the last capture or pawn move (50-move rule draws at 100). */
+    public int halfmoveClock;
+    /** Position keys after every move, for threefold repetition. */
+    public List<String> positionHistory;
 
     // ─── CARD SYSTEM STATE ──────────────────────────────────────
     public CardManager cardManager;
@@ -51,33 +53,27 @@ public class GameState implements Serializable {
 
     /** Total move counter for cards like Chrono Shift. */
     public int totalMoveCount;
-    
+
     public GameState() {
         board = new Piece[8][8];
         whiteToMove = true;
         goldPlayer = 0;
-        pawnResource = 2;
         movesToEnd = 0;
         capturesMade = 0;
         specialMovesUsed = 0;
         piecesLeftStanding = 0;
         aiDepth = 2;
-        bannedSquare = null;
         enPassantTarget = null;
-        
         lastMoveUCI = "";
-        gameOver = false;
-        gameResult = "";
         roundNumber = 1;
         moveHistory = new ArrayList<>();
-        whiteKingMoved = false;
-        whiteKingsideRookMoved = false;
-        whiteQueensideRookMoved = false;
-        blackKingMoved = false;
-        blackKingsideRookMoved = false;
-        blackQueensideRookMoved = false;
 
-        // Card system
+        result = GameResult.ONGOING;
+        gameOver = false;
+        gameResult = "";
+        halfmoveClock = 0;
+        positionHistory = new ArrayList<>();
+
         cardManager = new CardManager();
         stunnedPieces = new HashMap<>();
         minefieldSquares = new HashSet<>();
@@ -85,100 +81,84 @@ public class GameState implements Serializable {
         vaultingPieceSquare = -1;
         totalMoveCount = 0;
     }
-    
-    public void setGameState(GameState other) {
-        
-        this.board = new Piece[8][8];
-        for (int r = 0; r < 8; r++) {
-            for (int c = 0; c < 8; c++) {
-                Piece p = other.board[r][c];
-                this.board[r][c] = (p != null) ? p.clone() : null;
-            }
-        }
-        
-        this.whiteToMove = other.whiteToMove;
-        this.goldPlayer = other.goldPlayer;
-        this.pawnResource = other.pawnResource;
-        this.roundNumber = other.roundNumber;
-        this.aiDepth = other.aiDepth;
-        this.gameOver = other.gameOver;
-        this.gameResult = other.gameResult;
-        this.capturesMade = other.capturesMade;
-        this.specialMovesUsed = other.specialMovesUsed;
-        this.piecesLeftStanding = other.piecesLeftStanding;
-        this.movesToEnd = other.movesToEnd;
-        this.bannedSquare = other.bannedSquare;
-        this.enPassantTarget = other.enPassantTarget;
-        this.lastMoveUCI = other.lastMoveUCI;
-        
-        this.whiteKingMoved = other.whiteKingMoved;
-        this.whiteKingsideRookMoved = other.whiteKingsideRookMoved;
-        this.whiteQueensideRookMoved = other.whiteQueensideRookMoved;
-        this.blackKingMoved = other.blackKingMoved;
-        this.blackKingsideRookMoved = other.blackKingsideRookMoved;
-        this.blackQueensideRookMoved = other.blackQueensideRookMoved;
-        
-        this.moveHistory = new ArrayList<>(other.moveHistory);
 
-        // Card system
-        this.cardManager = (other.cardManager != null) ? other.cardManager.copy() : new CardManager();
-        this.stunnedPieces = new HashMap<>(other.stunnedPieces != null ? other.stunnedPieces : Collections.emptyMap());
-        this.minefieldSquares = new HashSet<>(other.minefieldSquares != null ? other.minefieldSquares : Collections.emptySet());
-        this.necromancerUsed = other.necromancerUsed;
-        this.vaultingPieceSquare = other.vaultingPieceSquare;
-        this.totalMoveCount = other.totalMoveCount;
+    /** Deep copy: pieces, lists, maps and card state are all independent of the original. */
+    public GameState copy() {
+        GameState c = new GameState();
+        c.copyFrom(this);
+        return c;
     }
 
-    public GameState copy() {
-        GameState copy = new GameState();
+    /** Makes this state an independent deep copy of other. */
+    public void copyFrom(GameState other) {
+        board = new Piece[8][8];
+        for (int r = 0; r < 8; r++) {
+            for (int col = 0; col < 8; col++) {
+                Piece p = other.board[r][col];
+                board[r][col] = (p != null) ? p.clone() : null;
+            }
+        }
+        whiteToMove = other.whiteToMove;
+        goldPlayer = other.goldPlayer;
+        movesToEnd = other.movesToEnd;
+        capturesMade = other.capturesMade;
+        specialMovesUsed = other.specialMovesUsed;
+        piecesLeftStanding = other.piecesLeftStanding;
+        aiDepth = other.aiDepth;
+        enPassantTarget = other.enPassantTarget; // Square is immutable
+        lastMoveUCI = other.lastMoveUCI;
+        roundNumber = other.roundNumber;
+        moveHistory = new ArrayList<>(other.moveHistory);
+
+        result = other.result;
+        gameOver = other.gameOver;
+        gameResult = other.gameResult;
+        halfmoveClock = other.halfmoveClock;
+        positionHistory = new ArrayList<>(other.positionHistory);
+
+        cardManager = (other.cardManager != null) ? other.cardManager.copy() : new CardManager();
+        stunnedPieces = new HashMap<>(other.stunnedPieces != null ? other.stunnedPieces : Collections.emptyMap());
+        minefieldSquares = new HashSet<>(other.minefieldSquares != null ? other.minefieldSquares : Collections.emptySet());
+        necromancerUsed = other.necromancerUsed;
+        vaultingPieceSquare = other.vaultingPieceSquare;
+        totalMoveCount = other.totalMoveCount;
+    }
+
+    /** Sets the result and keeps gameOver / gameResult in sync. */
+    public void setResult(GameResult r, String text) {
+        result = r;
+        gameOver = r.isOver();
+        gameResult = text;
+    }
+
+    /**
+     * Identifies a position for repetition: piece placement, side to move and en passant square.
+     */
+    public String positionKey() {
+        StringBuilder sb = new StringBuilder(70);
         for (int r = 0; r < 8; r++) {
             for (int c = 0; c < 8; c++) {
-                if (board[r][c] != null) {
-                    copy.board[r][c] = board[r][c].clone();
+                Piece p = board[r][c];
+                if (p == null) {
+                    sb.append('.');
+                } else {
+                    char ch = pieceLetter(p);
+                    sb.append(p.isWhite() ? ch : Character.toLowerCase(ch));
                 }
             }
         }
-        copy.whiteToMove = whiteToMove;
-        copy.goldPlayer = goldPlayer;
-        copy.pawnResource = pawnResource;
-        copy.movesToEnd = movesToEnd;
-        copy.capturesMade = capturesMade;
-        copy.specialMovesUsed = specialMovesUsed;
-        copy.piecesLeftStanding = piecesLeftStanding;
-        copy.bannedSquare = bannedSquare;
-        copy.enPassantTarget = enPassantTarget;
-        copy.gameOver = gameOver;
-        copy.gameResult = gameResult;
-        copy.roundNumber = roundNumber;
-        
-        copy.lastMoveUCI = lastMoveUCI;
-        copy.aiDepth = this.aiDepth;
-        copy.whiteKingMoved = whiteKingMoved;
-        copy.whiteKingsideRookMoved = whiteKingsideRookMoved;
-        copy.whiteQueensideRookMoved = whiteQueensideRookMoved;
-        copy.blackKingMoved = blackKingMoved;
-        copy.blackKingsideRookMoved = blackKingsideRookMoved;
-        copy.blackQueensideRookMoved = blackQueensideRookMoved;
-        
-        copy.moveHistory = new ArrayList<>(moveHistory);
-
-        // Card system deep copy
-        copy.cardManager = (cardManager != null) ? cardManager.copy() : new CardManager();
-        copy.stunnedPieces = new HashMap<>(stunnedPieces != null ? stunnedPieces : Collections.emptyMap());
-        copy.minefieldSquares = new HashSet<>(minefieldSquares != null ? minefieldSquares : Collections.emptySet());
-        copy.necromancerUsed = necromancerUsed;
-        copy.vaultingPieceSquare = vaultingPieceSquare;
-        copy.totalMoveCount = totalMoveCount;
-
-        return copy;
+        sb.append(whiteToMove ? 'w' : 'b');
+        if (enPassantTarget != null) sb.append(enPassantTarget.row).append(enPassantTarget.col);
+        return sb.toString();
     }
 
-    public void initializeStartingPosition() {
-        board[7][4] = new King(true);
-        board[6][3] = new Pawn(true);
-        board[6][4] = new Pawn(true);
-        board[0][4] = new King(false);
-        board[1][3] = new Pawn(false);
-        board[1][4] = new Pawn(false);
+    /** FEN-style letter for a piece (N for Knight, so it doesn't clash with King). */
+    public static char pieceLetter(Piece p) {
+        if (p instanceof King) return 'K';
+        if (p instanceof Queen) return 'Q';
+        if (p instanceof Rook) return 'R';
+        if (p instanceof Bishop) return 'B';
+        if (p instanceof Knight) return 'N';
+        return 'P';
     }
 }
