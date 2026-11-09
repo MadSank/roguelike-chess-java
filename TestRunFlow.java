@@ -40,11 +40,17 @@ public class TestRunFlow {
         TestSupport.checkEquals(2, Economy.pawnCap(0, 0), "King alone allows 2 pawns");
         TestSupport.checkEquals(4, Economy.pawnCap(2, 0), "two rooks allow 4 pawns");
         TestSupport.checkEquals(8, Economy.pawnCap(6, 1), "full board allows 8 pawns");
-        Economy.Payout win = Economy.payout(GameResult.WHITE_WINS, 5, 4, 6, 3);
-        TestSupport.checkEquals(2 * 5 + 3 * 4 + 6 + Economy.levelBase(3), win.total, "win pays own + defeated + bonuses + level base");
-        Economy.Payout draw = Economy.payout(GameResult.DRAW, 5, 4, 6, 3);
+        Economy.Payout win = Economy.payout(GameResult.WHITE_WINS, 5, 4, 6, 3, 0);
+        TestSupport.checkEquals(1 * 5 + 6 + 6 + (15 + 9), win.total, "win: 1/own point + 1.5/defeated point + bonuses + level base");
+        Economy.Payout draw = Economy.payout(GameResult.DRAW, 5, 4, 6, 3, 0);
         TestSupport.checkEquals(win.total * Economy.DRAW_PERCENT / 100, draw.total, "draw pays 30% of the win formula");
-        TestSupport.checkEquals(0, Economy.payout(GameResult.BLACK_WINS, 5, 4, 6, 3).total, "loss pays nothing");
+        TestSupport.checkEquals(0, Economy.payout(GameResult.BLACK_WINS, 5, 4, 6, 3, 100).total, "loss pays nothing (no interest)");
+        TestSupport.checkEquals(6 + 4, Economy.countedMaterial(14, 3), "material above the requirement (6) counts half");
+        TestSupport.checkEquals(Economy.winValue(5, 4, Economy.bonusCap(3), 3), Economy.winValue(5, 4, 999, 3),
+            "bonus coins are capped per round");
+        TestSupport.checkEquals(3, Economy.interest(37), "interest: 1 per 10 banked");
+        TestSupport.checkEquals(5, Economy.interest(400), "interest capped at 5");
+        TestSupport.checkEquals(win.total + 5, Economy.payout(GameResult.WHITE_WINS, 5, 4, 6, 3, 400).total, "interest added to a win");
     }
 
     static void shopRules() {
@@ -115,7 +121,7 @@ public class TestRunFlow {
         }
         forceResult(run, GameResult.WHITE_WINS);
         RunController.RoundSummary win = run.finishRound();
-        int expected = 2 * 2 + 3 * 1 + Economy.FAST_MATE_BONUS + Economy.levelBase(1);
+        int expected = Economy.winValue(2, 1, Economy.FAST_MATE_BONUS, 1); // no gold banked yet, so no interest
         TestSupport.checkEquals(expected, win.payout.total, "win payout: 2 own, 1 defeated, fast mate, level base");
         TestSupport.checkEquals(2, run.getLevel(), "win moves on to level 2");
         TestSupport.checkEquals(1, run.getHighestLevelBeaten(), "level 1 recorded as beaten");
@@ -144,7 +150,7 @@ public class TestRunFlow {
         RunController run = newRun();
         forceResult(run, GameResult.DRAW);
         RunController.RoundSummary d = run.finishRound();
-        int win = 2 * 2 + 0 + Economy.levelBase(1);
+        int win = Economy.winValue(2, 0, 0, 1);
         TestSupport.checkEquals(win * Economy.DRAW_PERCENT / 100, d.payout.total, "draw pays 30%, no fast-mate bonus");
         TestSupport.checkEquals(1, run.getLevel(), "draw replays the same level");
         TestSupport.checkEquals(2, run.getShop().armyMaterial(), "survivors kept after a draw");

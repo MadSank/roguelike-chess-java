@@ -91,17 +91,40 @@ public final class Economy {
     // ─── PAYOUTS ────────────────────────────────────────────────
 
     /** Coins per point of your own material still on the board at the end of a win. */
-    public static final int COINS_PER_OWN_POINT = 2;
-    /** Coins per point of enemy material defeated (captured, or destroyed by your cards). */
-    public static final int COINS_PER_DEFEATED_POINT = 3;
-    /** A draw pays this percentage of the win formula. */
+    public static final int COINS_PER_OWN_POINT = 1;
+    /**
+     * Coins per point of enemy material defeated (captured, or destroyed by your cards),
+     * in tenths: 15 = 1.5 coins per point.
+     */
+    public static final int TENTHS_PER_DEFEATED_POINT = 15;
+    /** A draw pays this percentage of the win formula (interest is paid in full). */
     public static final int DRAW_PERCENT = 30;
     /** Mating within this many of your own moves earns the fast-mate bonus. */
     public static final int FAST_MATE_MOVES = 15;
     public static final int FAST_MATE_BONUS = 10;
+    /** Interest: 1 coin per this much banked gold... */
+    public static final int INTEREST_STEP = 10;
+    /** ...up to this many coins per round. */
+    public static final int INTEREST_CAP = 5;
 
+    /*
+     * WHY THESE NUMBERS
+     * A point of material costs 5 coins. Under the mirror, every point you field can earn
+     * (own + defeated) = 1 + 1.5 = 2.5 coins per level at best, so a piece pays for itself
+     * in about two to four levels instead of one: buying pieces is an investment, not a
+     * money printer. The level base covers the requirement going up (about 3 points, or
+     * 15 coins, per level) with room left for cards. Interest rewards keeping savings,
+     * which is the player's insurance against a loss (a loss leaves only the King).
+     */
+
+    /** Flat pay for winning a level: covers the next requirement step plus a little for cards. */
     public static int levelBase(int level) {
-        return 10 + 2 * level;
+        return 15 + 3 * level;
+    }
+
+    /** Interest on gold banked when the round ends (wins and draws only). */
+    public static int interest(int goldBanked) {
+        return Math.min(INTEREST_CAP, Math.max(0, goldBanked) / INTEREST_STEP);
     }
 
     /** Breakdown of a round's payout, for the end-of-round screen. */
@@ -110,29 +133,54 @@ public final class Economy {
         public final int defeatedMaterial;
         public final int bonusCoins;
         public final int levelBase;
+        public final int interest;
         public final int total;
 
-        Payout(int ownMaterial, int defeatedMaterial, int bonusCoins, int levelBase, int total) {
+        Payout(int ownMaterial, int defeatedMaterial, int bonusCoins, int levelBase, int interest, int total) {
             this.ownMaterial = ownMaterial;
             this.defeatedMaterial = defeatedMaterial;
             this.bonusCoins = bonusCoins;
             this.levelBase = levelBase;
+            this.interest = interest;
             this.total = total;
         }
     }
 
+    /**
+     * Material that counts for pay: everything up to the level's requirement counts fully,
+     * anything above it counts half. Bigger armies still earn more, but hoarding queens
+     * far beyond the requirement doesn't scale pay one-for-one.
+     */
+    public static int countedMaterial(int material, int level) {
+        int req = requirement(level);
+        return Math.min(material, req) + Math.max(0, material - req) / 2;
+    }
+
+    /** Most bonus coins one round can pay (so spamming checks can't print money). */
+    public static int bonusCap(int level) {
+        return 10 + 2 * level;
+    }
+
+    /** The win formula before interest. */
+    public static int winValue(int ownMaterialLeft, int enemyMaterialDefeated, int bonusCoins, int level) {
+        return COINS_PER_OWN_POINT * countedMaterial(ownMaterialLeft, level)
+            + TENTHS_PER_DEFEATED_POINT * countedMaterial(enemyMaterialDefeated, level) / 10
+            + Math.min(bonusCoins, bonusCap(level)) + levelBase(level);
+    }
+
+    /**
+     * @param goldBanked gold the player holds when the round ends (before this payout)
+     */
     public static Payout payout(GameResult result, int ownMaterialLeft, int enemyMaterialDefeated,
-                                int bonusCoins, int level) {
-        int base = levelBase(level);
-        int win = COINS_PER_OWN_POINT * ownMaterialLeft
-                + COINS_PER_DEFEATED_POINT * enemyMaterialDefeated
-                + bonusCoins + base;
+                                int bonusCoins, int level, int goldBanked) {
+        int win = winValue(ownMaterialLeft, enemyMaterialDefeated, bonusCoins, level);
+        int interest = result == GameResult.BLACK_WINS ? 0 : interest(goldBanked);
         int total;
         switch (result) {
-            case WHITE_WINS: total = win; break;
-            case DRAW:       total = Math.max(1, win * DRAW_PERCENT / 100); break;
+            case WHITE_WINS: total = win + interest; break;
+            case DRAW:       total = Math.max(1, win * DRAW_PERCENT / 100) + interest; break;
             default:         total = 0;
         }
-        return new Payout(ownMaterialLeft, enemyMaterialDefeated, bonusCoins, base, total);
+        return new Payout(ownMaterialLeft, enemyMaterialDefeated, bonusCoins, levelBase(level), interest, total);
     }
 }

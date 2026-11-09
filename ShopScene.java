@@ -134,8 +134,10 @@ public class ShopScene extends JPanel {
         int have = shop.armyMaterial(), need = Economy.requirement(level);
         g.setFont(new Font("SansSerif", Font.BOLD, 15));
         g.setColor(have >= need ? GOOD : CRIMSON);
-        g.drawString(String.format("Level %d needs %d material. Your army: %d%s", level, need, have,
-            have >= need ? "  ✔" : "  (need " + (need - have) + " more)"), 30, 72);
+        String hint = have >= need ? "  ✔"
+            : shop.canStillReach(level) ? "  (need " + (need - have) + " more)"
+            : "  (can't afford it: sell cards or give up)";
+        g.drawString(String.format("Level %d needs %d material. Your army: %d%s", level, need, have, hint), 30, 72);
         g.setFont(new Font("SansSerif", Font.PLAIN, 13));
         g.setColor(TEXT_DIM);
         g.drawString(String.format("Pawns %d / %d allowed  ·  AI depth %d  ·  Best level beaten: %d",

@@ -130,7 +130,11 @@ public class ChessEngine {
             s.enPassantTarget = new Square((move.fromRow + move.toRow) / 2, move.toCol);
         }
 
-        if (captured != null || mover instanceof Pawn) {
+        // Captures and forward pawn moves can't be undone, so they restart the 50-move count
+        // (and the repetition window). A pawn stepping back (Pawn Retreat card) doesn't.
+        boolean pawnForward = mover instanceof Pawn
+            && (mover.isWhite() ? move.toRow < move.fromRow : move.toRow > move.fromRow);
+        if (captured != null || pawnForward) {
             s.halfmoveClock = 0;
         } else {
             s.halfmoveClock++;
@@ -458,9 +462,9 @@ public class ChessEngine {
         if (n < 5) return false;
         String current = s.positionHistory.get(n - 1);
         int count = 0;
-        // Only positions since the last capture or pawn move can repeat.
-        int from = Math.max(0, n - 1 - s.halfmoveClock);
-        for (int i = from; i < n; i++) {
+        // Scan the whole game: with cards like Pawn Retreat, positions from before a pawn
+        // move can come back. Only every other entry can match (same side to move).
+        for (int i = n - 1; i >= 0; i -= 2) {
             if (s.positionHistory.get(i).equals(current)) count++;
         }
         return count >= 3;

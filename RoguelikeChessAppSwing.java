@@ -209,11 +209,12 @@ public class RoguelikeChessAppSwing extends JFrame {
             default:         title = "Defeat";  msg.append("Checkmated. Only your King survives.\nRebuild your army and replay level ").append(s.level).append(".\n");
         }
         if (s.result != GameResult.BLACK_WINS) {
-            msg.append(String.format("%nYour material left: %d x%d%nEnemy material defeated: %d x%d%nGood moves: %d%nLevel bonus: %d%n",
+            msg.append(String.format("%nYour material left: %d x%d%nEnemy material defeated: %d x%.1f%nGood moves: %d%nLevel bonus: %d%n",
                 s.payout.ownMaterial, Economy.COINS_PER_OWN_POINT,
-                s.payout.defeatedMaterial, Economy.COINS_PER_DEFEATED_POINT,
+                s.payout.defeatedMaterial, Economy.TENTHS_PER_DEFEATED_POINT / 10.0,
                 s.payout.bonusCoins, s.payout.levelBase));
             if (s.result == GameResult.DRAW) msg.append("Draws pay ").append(Economy.DRAW_PERCENT).append("%\n");
+            msg.append("Interest on savings: ").append(s.payout.interest).append("\n");
             msg.append("Gold earned: ").append(s.payout.total).append("\n");
         }
         msg.append("Gold: ").append(s.goldAfter);

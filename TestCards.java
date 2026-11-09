@@ -77,6 +77,12 @@ public class TestCards {
         TestSupport.check(TestSupport.findMove(new ChessEngine(s), "e5e4") != null, "pawn steps backward");
         GameState t = with("k7/8/8/8/8/8/4P3/K7 w - - 0", new CardPawnRetreat());
         TestSupport.checkEquals(null, TestSupport.findMove(new ChessEngine(t), "e2e1"), "never back onto the first rank");
+
+        // Shuffling a pawn back and forth must still end in a repetition draw.
+        GameState r = with("k7/8/8/4P3/8/8/8/K7 w - - 0", new CardPawnRetreat());
+        ChessEngine re = new ChessEngine(r);
+        TestSupport.play(re, "e5e4", "a8b8", "e4e5", "b8a8", "e5e4", "a8b8", "e4e5", "b8a8");
+        TestSupport.checkEquals(GameResult.DRAW, r.result, "pawn shuffling with Pawn Retreat is a repetition draw");
     }
 
     static void bishopShift() {

@@ -35,9 +35,12 @@ A roguelike chess run against an AI that gets stronger every level. Cards give r
 - **Good-move bonuses**, each shown as a non-blocking "+N bonus" pop-up when the move is played:
   check, fork, capturing a more valuable piece with a cheaper one, promotion, en passant, fast mate, capture made with a card ability.
 
-### Current numbers (Economy.java / MoveBonuses.java, first pass, to be tuned)
-- Win: 2 coins per point of your material left + 3 per point of enemy material defeated + bonuses + level base (10 + 2 × level).
-- Draw: 30% of that. Loss: nothing.
+### Current numbers (Economy.java / MoveBonuses.java)
+- **Win** = counted(your material left) × 1 + counted(enemy material defeated) × 1.5 + min(bonuses, 10 + 2 × level) + level base (15 + 3 × level) + interest.
+  - *counted(x)*: material up to the level's requirement counts fully; anything above it counts half.
+  - *Interest*: 1 coin per 10 gold banked, at most 5 per round (wins and draws). Savings are your insurance against a loss.
+  - Why: a point of material costs 5 coins but earns at most 2.5 per level, so pieces pay back over a few levels instead of every level (the old formula let gold snowball past 1,000).
+- **Draw**: 30% of the win formula, plus interest. **Loss**: nothing.
 - Bonuses: check +2, fork +4, trade up +3, promotion +3, en passant +3, card capture +3, fast mate (within 15 of your moves) +10.
 - Prices: 5 coins per point of material (Pawn 5, Knight/Bishop 15, Rook 25, Queen 45). Face-up cards cost 1.5× their base price; mystery pack 8 + 2 × level. Selling returns half (cards: half the base price).
 

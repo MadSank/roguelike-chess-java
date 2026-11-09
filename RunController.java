@@ -289,7 +289,7 @@ public class RunController {
 
         int own = Economy.material(s, true);
         int defeated = Math.max(0, blackMaterialAtStart - Economy.material(s, false));
-        Economy.Payout payout = Economy.payout(result, own, defeated, bonusCoins, playedLevel);
+        Economy.Payout payout = Economy.payout(result, own, defeated, bonusCoins, playedLevel, s.goldPlayer);
 
         // s.goldPlayer already includes coins cards paid during the round.
         shop.setGold(s.goldPlayer + payout.total);
