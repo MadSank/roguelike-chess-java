@@ -30,3 +30,6 @@ ehthumbs_vista.db
 # Rendered art (made locally by tools/blender/build_scenes.py; not stored in git)
 resources/scenes/
 resources/images/
+
+# Downloaded Poly Haven assets (CC0; fetched by tools/blender/fetch_assets.py)
+tools/blender/assets/
