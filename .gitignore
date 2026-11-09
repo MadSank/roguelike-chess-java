@@ -33,3 +33,6 @@ resources/images/
 
 # Downloaded Poly Haven assets (CC0; fetched by tools/blender/fetch_assets.py)
 tools/blender/assets/
+
+# Python bytecode from the Blender scripts
+__pycache__/
