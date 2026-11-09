@@ -43,11 +43,8 @@ public class ResourceLoader {
             }
         }
 
-        if (img == null) {
-            img = createPlaceholder(64, 64, filename);
-            System.err.println("Could not load image: " + filename);
-        }
-
+        // Missing images stay null, so callers fall back to their own drawing
+        // (the board draws Unicode chess symbols).
         imageCache.put(filename, img);
         return img;
     }
@@ -60,24 +57,6 @@ public class ResourceLoader {
 
     public static BufferedImage loadUIImage(String name) {
         return loadImage(name + ".png");
-    }
-
-    private static BufferedImage createPlaceholder(int width, int height, String label) {
-        BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-        java.awt.Graphics2D g = img.createGraphics();
-
-        g.setColor(new java.awt.Color(200, 200, 200));
-        g.fillRect(0, 0, width, height);
-
-        g.setColor(java.awt.Color.BLACK);
-        g.drawRect(0, 0, width - 1, height - 1);
-
-        g.setFont(new java.awt.Font("Arial", java.awt.Font.PLAIN, 10));
-        String shortLabel = label.length() > 8 ? label.substring(0, 8) : label;
-        g.drawString(shortLabel, 5, height / 2);
-
-        g.dispose();
-        return img;
     }
 
     public static BufferedImage scaleImage(BufferedImage original, int width, int height) {
@@ -103,6 +82,6 @@ public class ResourceLoader {
             }
         }
 
-        System.out.println("Piece images preloaded.");
+
     }
 }

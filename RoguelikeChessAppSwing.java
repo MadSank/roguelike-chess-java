@@ -16,6 +16,7 @@ public class RoguelikeChessAppSwing extends JFrame {
     private final MenuSwing menuScene;
     private final BoardViewSwing boardView;
     private final ShopScene shopScene;
+    private final IntroScene introScene;
     /** True while the AI is searching on a background thread. */
     private boolean aiThinking;
 
@@ -24,6 +25,8 @@ public class RoguelikeChessAppSwing extends JFrame {
         menuScene = new MenuSwing(this);
         boardView = new BoardViewSwing(this);
         shopScene = new ShopScene(this);
+        introScene = new IntroScene();
+        sceneContainer.add(introScene, "INTRO");
         sceneContainer.add(menuScene, "MENU");
         sceneContainer.add(boardView, "BOARD");
         sceneContainer.add(shopScene, "SHOP");
@@ -50,7 +53,13 @@ public class RoguelikeChessAppSwing extends JFrame {
         if (name == null) return; // cancelled
         if (name.trim().isEmpty()) name = "Anonymous";
         run.startNewRun(name.trim());
-        showBoard();
+        if (ScenePlayer.scenesAvailable()) {
+            sceneLayout.show(sceneContainer, "INTRO");
+            AudioPlayer.playMusic("battle.wav", true);
+            introScene.start(this::showBoard);
+        } else {
+            showBoard();
+        }
     }
 
     public String getLeaderboardText() {
@@ -75,10 +84,13 @@ public class RoguelikeChessAppSwing extends JFrame {
         menuScene.showMenu();
     }
 
-    /** Shop "Continue" button. Returns false if the requirement isn't met yet. */
+    /**
+     * Shop "Sit down" button. Returns true if the round started; false if the requirement
+     * isn't met or the player cancelled the hand picker (they stay in the shop).
+     */
     public boolean onShoppingComplete() {
         if (!run.getShop().meetsRequirement(run.getLevel())) return false;
-        if (!chooseHand()) return true; // player cancelled the hand picker: stay in the shop
+        if (!chooseHand()) return false;
         if (!run.finishShopping()) return false;
         showBoard();
         return true;

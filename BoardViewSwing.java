@@ -10,7 +10,7 @@ import java.util.List;
  * The chess board. Reads the current round from the RunController on every paint.
  */
 public class BoardViewSwing extends JPanel {
-    private static final int SQUARE_SIZE = 80;
+    private static final int SQUARE_SIZE = 74; // board + status bar fit the 700 px window
     private static final int BOARD_SIZE = 8 * SQUARE_SIZE;
     /** How long a "+N gold" pop-up stays up, in milliseconds. */
     private static final int TOAST_MS = 2200;
@@ -26,6 +26,8 @@ public class BoardViewSwing extends JPanel {
     /** Floating messages (bonus pop-ups): text and the time it appeared. */
     private final List<Object[]> toasts = new ArrayList<>();
     private final Timer toastTimer;
+    /** The rendered room behind the board (falls back to plain colours if not rendered). */
+    private final ScenePlayer scene;
 
     private static final Color DARK_SQ = new Color(26, 26, 46);
     private static final Color LIGHT_SQ = new Color(22, 33, 62);
@@ -44,6 +46,8 @@ public class BoardViewSwing extends JPanel {
         this.app = app;
         setPreferredSize(new Dimension(BOARD_SIZE + 10, BOARD_SIZE + 60));
         setBackground(BG);
+        scene = new ScenePlayer(this);
+        scene.setView("table");
         addMouseListener(new MouseAdapter() {
             @Override public void mouseClicked(MouseEvent e) {
                 for (int i = 0; i < handButtons.size(); i++) {
@@ -163,6 +167,11 @@ public class BoardViewSwing extends JPanel {
         g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
         GameState state = engine().getGameState();
 
+        // The room behind everything (if the scenes were rendered), dimmed so the board reads.
+        if (scene.paint(g, getWidth(), getHeight())) {
+            g.setColor(new Color(0, 0, 0, 120));
+            g.fillRect(0, 0, getWidth(), getHeight());
+        }
         drawBoard(g);
         drawMinefields(g, state);
         drawStunnedOverlay(g, state);
@@ -171,6 +180,7 @@ public class BoardViewSwing extends JPanel {
         drawVignette(g);
         drawStatusBar(g, state);
         drawHandPanel(g, state);
+        if (SceneClip.load("table") != null) scene.drawGrain(g, getWidth(), getHeight());
         drawToasts(g);
     }
 
@@ -181,7 +191,7 @@ public class BoardViewSwing extends JPanel {
         RunController run = app.getRun();
         int x = BOARD_SIZE + 12, w = getWidth() - x - 10;
         if (w < 120) return;
-        g.setColor(new Color(15, 12, 22));
+        g.setColor(new Color(15, 12, 22, 190)); // see-through: the room shows behind the hand
         g.fillRoundRect(x, 6, w, getHeight() - 12, 10, 10);
         g.setColor(new Color(80, 30, 40));
         g.drawRoundRect(x, 6, w, getHeight() - 12, 10, 10);

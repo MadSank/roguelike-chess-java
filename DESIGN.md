@@ -73,6 +73,13 @@ A roguelike chess run against an AI that gets stronger every level. Cards give r
 - Card abilities may not capture or target a King (snipe, vault, etc.) for now.
 - 19 cards: the original 14 plus Pawn Surge, Pawn Retreat, Bishop Shift, King's Stride and Time Stop (rebuilt from the oldest version's powerups).
 
+## Presentation (pre-rendered scenes)
+- A cellar under one hanging lamp. The player sits at a table facing a masked opponent; three hooded dealers stand around the seat: the **card dealer** (left), the **piece dealer** (right) and the **reseller** (behind, right).
+- New Game plays an intro: a bathroom mirror, a corridor, the room, sitting down, leaning over the board. Click to skip.
+- The shop is the three dealers: the camera turns between them (◀ ▶ or arrow keys) like Buckshot Roulette's fixed views; "Sit down" turns back to the table.
+- Everything is rendered in Blender by `tools/blender/build_scenes.py` (placeholder low-poly art from primitives) into `resources/scenes/<clip>/` (320×240 JPG frames) and `resources/images/piece_*.png`. The game scales frames up with nearest-neighbour pixels and adds grain, a vignette and lamp flicker (ScenePlayer). Re-run the script after changing the scene; replace primitives with real models later.
+- If the rendered files are missing, the game falls back to its plain look.
+
 ## Leaderboard
 - Ranked by the highest level beaten.
 
