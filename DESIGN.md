@@ -79,6 +79,12 @@ A roguelike chess run against an AI that gets stronger every level. Cards give r
 - The shop is the three dealers: the camera turns between them (◀ ▶ or arrow keys) like Buckshot Roulette's fixed views; "Sit down" turns back to the table.
 - Everything is rendered in Blender by `tools/blender/build_scenes.py` (placeholder low-poly art from primitives) into `resources/scenes/<clip>/` (320×240 JPG frames) and `resources/images/piece_*.png`. The game scales frames up with nearest-neighbour pixels and adds grain, a vignette and lamp flicker (ScenePlayer). Re-run the script after changing the scene; replace primitives with real models later.
 - If the rendered files are missing, the game falls back to its plain look.
+- **Rendered files stay local** (ignored by git): run the Blender script to make them. A fresh clone has no art until it is rendered.
+
+### Direction: realistic world, hidden faces (decided)
+- Move from PS1 placeholders to a realistic look: real textures and models (Poly Haven, CC0), physically based lighting from the single lamp, haze, depth of field, light film grain (no pixelation).
+- **Shopkeepers are masked men.** The **opponent is masked for now**; an unmasked opponent whose face shows emotion is a *maybe* for later (it brings facial animation and uncanny-valley risk).
+- The chessboard stays drawn by the game: a realistic board and pieces rendered from one fixed overhead angle so the live position sits inside the scene.
 
 ## Leaderboard
 - Ranked by the highest level beaten.
