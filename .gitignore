@@ -1,6 +1,7 @@
-# Compiled class files
+# Compiled class files (run.cmd / test.cmd compile into out/)
 *.class
 *.jar
+out/
 
 # BlueJ files (BlueJ regenerates these when the folder is opened)
 *.ctxt
