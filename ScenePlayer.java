@@ -122,6 +122,17 @@ public class ScenePlayer {
         startNext(endView);
     }
 
+    /** Plays several clips back to back (e.g. a cutscene in parts), then holds on the given view. */
+    public void playClips(String[] clips, String endView, Runnable then) {
+        queue.clear();
+        for (String name : clips) {
+            SceneClip c = SceneClip.load(name);
+            if (c != null) queue.add(new Object[]{c, false, endView});
+        }
+        onArrive = then;
+        startNext(endView);
+    }
+
     /** Turns the camera to a view along the ring (shortest way), then runs then. */
     public void turnTo(String target, Runnable then) {
         int from = indexOf(view), to = indexOf(target);

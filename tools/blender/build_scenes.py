@@ -1,7 +1,8 @@
 """
 Builds the realistic Ashes cellar in Blender and renders every clip the game plays.
 
-Run from the project folder (after tools\\blender\\fetch_assets.py has downloaded the assets):
+Run from the project folder, after tools\\blender\\fetch_assets.py has downloaded the assets and
+tools\\blender\\make_characters.py has built the characters (assets/characters.blend):
     "C:\\Program Files\\Blender Foundation\\Blender 5.2\\blender.exe" -b --factory-startup -P tools\\blender\\build_scenes.py
 Options after "--":
     --draft           EEVEE at half resolution: fast previews (minutes instead of an hour)
@@ -10,14 +11,16 @@ Options after "--":
 
 Output: resources/scenes/<clip>/frame_0001.jpg ... at 1280x720 (ignored by git).
 Clips: still views table / card / piece / resell, the turns between neighbouring views, the intro,
-the dealers' idle loops and reactions (<view>_idle, <view>_yes, <view>_no), and the opponent close-up
-shown beside the board during play (opponent_idle plus think / capture / hurt / check / win / lose,
-rendered at half resolution because the game shows it small).
+the dealers' idle loops and reactions (<view>_idle, <view>_yes, <view>_no), each opponent's close-up
+shown beside the board during play (opponent<n>_idle plus think / capture / hurt / check / win / lose,
+half resolution because the game shows it small), and the swap after a win: the lamp dies on the
+beaten opponent (swap_out_<n>) and comes back on the next one (swap_in_<n>).
 
 The set: a brick cellar under one hanging lamp; the player's seat at a round table facing a
 masked opponent; three masked dealers around the seat (card dealer left, piece dealer right,
 reseller behind-right); a corridor and a tiled bathroom for the intro. Real props and textures
-come from Poly Haven (CC0). The figures are stand-in robes with theatre masks (masks.py).
+come from Poly Haven (CC0). The characters are realistic MPFB bodies in simulated cloth with
+theatre masks (realistic.py, masks.py); five opponents share the chair, one shown at a time.
 """
 import bmesh
 import bpy
@@ -28,7 +31,7 @@ import sys
 from mathutils import Vector
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import characters  # noqa: E402
+import realistic  # noqa: E402
 import scene_kit as kit  # noqa: E402
 
 # ─── SETTINGS ────────────────────────────────────────────────────────────────
@@ -45,7 +48,10 @@ SEAT = Vector((0.0, -0.95, 0.0))
 EYE_SEATED = 1.15
 EYE_STANDING = 1.62
 OPPONENT = Vector((0.0, 1.0, 0.0))
-RIGS = {}  # view name -> the character seen in it (for reactions)
+RIGS = {}  # view name (and "opponent<n>") -> the character seen in it (for reactions)
+ROSTER = 5
+CHARACTERS_BLEND = os.path.join(kit.ASSETS, "characters.blend")
+TABLE_HEIGHT_SCALE = 0.76   # the table model is bar height; shortened to a dining table
 LIGHTS = {}  # named lights the intro animates
 INTRO_FRAMES = 264
 DEALER_REACTIONS = ["yes", "no"]
@@ -115,20 +121,17 @@ def build_set():
 
     # The table, the chess set and the lamp.
     table, table_objs = kit.import_model("round_wooden_table_01", Vector((0, 0, 0)), sit_on=0.0)
+    table.scale.z *= TABLE_HEIGHT_SCALE
+    bpy.context.view_layer.update()
     top = kit.bounds(table_objs)[1].z
     kit.import_model("chess_set", Vector((0, 0, 0)), rot_z=math.pi, sit_on=top)
     kit.import_model("WoodenChair_01", Vector((OPPONENT.x, OPPONENT.y + 0.1, 0)), sit_on=0.0)
     kit.import_model("hanging_industrial_lamp", Vector((0, 0, 0)), scale=0.45, sit_on=1.95)
-    kit.light("SPOT", (0, 0, 1.93), 650, (1.0, 0.8, 0.6), size=0.08, target=(0, 0, 0), spot_deg=85, blend=0.6)
-    kit.light("POINT", (0, 0, 1.98), 25, (1.0, 0.7, 0.4), size=0.05)
+    LIGHTS["lamp"] = kit.light("SPOT", (0, 0, 1.93), 650, (1.0, 0.8, 0.6), size=0.08, target=(0, 0, 0), spot_deg=85, blend=0.6)
+    LIGHTS["bulb"] = kit.light("POINT", (0, 0, 1.98), 25, (1.0, 0.7, 0.4), size=0.05)
 
-    # The opponent and the three dealers.
-    cmats = {"wool": characters.wool_material("wool"), "capelet": characters.wool_material("capelet", (0.01, 0.009, 0.008)),
-             "glove": characters.leather_material("glove"), "void": characters.void_material("void")}
-    RIGS["opponent"] = characters.build_character("opponent", OPPONENT, math.pi, mood="sad", seed=5, seated=True, pose="table", mats=cmats)
-    RIGS["card"] = characters.build_character("card_dealer", CARD_DEALER, yaw_to(CARD_DEALER, SEAT), mood="smile", seed=2, pose="offering", mats=cmats)
-    RIGS["piece"] = characters.build_character("piece_dealer", PIECE_DEALER, yaw_to(PIECE_DEALER, SEAT), mood="sad", seed=7, pose="clasped", mats=cmats)
-    RIGS["resell"] = characters.build_character("reseller", RESELLER, yaw_to(RESELLER, SEAT), mood="smile", seed=11, pose="clasped", height=0.95, mats=cmats)
+    # The opponents and the three dealers (built by make_characters.py).
+    load_characters()
 
     # Card dealer: a small stand with candles and a fan of cards.
     stand = Vector((-1.05, -0.62, 0))
@@ -158,8 +161,46 @@ def build_set():
     # Rim lights so the dark robes separate from the dark walls.
     for figure, src, energy in ((OPPONENT, (0.3, 2.4, 2.1), 45), (CARD_DEALER, (-2.7, -1.3, 2.2), 30),
                                 (PIECE_DEALER, (2.7, -1.3, 2.2), 30), (RESELLER, (1.6, -3.6, 2.2), 25)):
-        kit.light("AREA", src, energy, (1.0, 0.6, 0.35), size=0.6, target=figure + Vector((0, 0, 1.3)))
+        rim = kit.light("AREA", src, energy, (1.0, 0.6, 0.35), size=0.6, target=figure + Vector((0, 0, 1.3)))
+        if figure is OPPONENT:
+            LIGHTS["rim_opponent"] = rim
     return sc, top
+
+
+def load_characters():
+    """Appends the characters from assets/characters.blend and puts them in their places."""
+    if not os.path.exists(CHARACTERS_BLEND):
+        raise SystemExit("No characters yet: run tools/blender/make_characters.py first.")
+    names = ["opponent%d" % n for n in range(1, ROSTER + 1)] + ["card_dealer", "piece_dealer", "reseller"]
+    with bpy.data.libraries.load(CHARACTERS_BLEND, link=False) as (src, dst):
+        dst.collections = [n for n in names if n in src.collections]
+    for col in dst.collections:
+        bpy.context.scene.collection.children.link(col)
+
+    def rig(name):
+        return next(o for o in bpy.data.collections[name].objects if o.type == "ARMATURE" and o.parent is None)
+
+    for n in range(1, ROSTER + 1):
+        r = rig("opponent%d" % n)
+        realistic.place(r, OPPONENT, math.pi)
+        RIGS["opponent%d" % n] = r
+    RIGS["opponent"] = RIGS["opponent1"]
+    for view, name, pos in (("card", "card_dealer", CARD_DEALER), ("piece", "piece_dealer", PIECE_DEALER),
+                            ("resell", "reseller", RESELLER)):
+        RIGS[view] = rig(name)
+        realistic.place(RIGS[view], pos, yaw_to(pos, SEAT))
+    show_opponent(1)
+
+
+def show_opponent(n):
+    """Only opponent n is rendered (they all sit in the same chair)."""
+    for k in range(1, ROSTER + 1):
+        bpy.data.collections["opponent%d" % k].hide_render = k != n
+
+
+def head_pos(rig):
+    bpy.context.view_layer.update()
+    return rig.matrix_world @ rig.pose.bones["head"].head
 
 
 def cracked_glass(at):
@@ -276,15 +317,22 @@ def pose(eye, target):
 
 def build_views(top):
     eye = Vector((SEAT.x, SEAT.y, EYE_SEATED))
-    lean = Vector((SEAT.x, SEAT.y + 0.42, 1.32))
+    lean = Vector((SEAT.x, SEAT.y + 0.35, top + 0.5))
+
+    def chest(view):  # frame each dealer on his upper body
+        return head_pos(RIGS[view]).z - 0.28
     return {
-        "table": pose(lean, Vector((0, -0.12, top))),
-        "card": pose(eye, CARD_DEALER + Vector((0.2, 0.08, 1.36))),
-        "piece": pose(eye, PIECE_DEALER + Vector((-0.2, 0.08, 1.36))),
-        "resell": pose(eye, RESELLER + Vector((0.15, -0.15, 1.3))),
-        # Close-up of the opponent across the board (shown small beside the board during play).
-        "opponent": pose(Vector((0.0, -0.3, 1.5)), OPPONENT + Vector((0, 0, 1.5))),
+        "table": pose(lean, Vector((0, -0.08, top))),
+        "card": pose(eye, Vector((CARD_DEALER.x + 0.2, CARD_DEALER.y + 0.08, chest("card")))),
+        "piece": pose(eye, Vector((PIECE_DEALER.x - 0.2, PIECE_DEALER.y + 0.08, chest("piece")))),
+        "resell": pose(eye, Vector((RESELLER.x + 0.15, RESELLER.y - 0.15, chest("resell")))),
     }
+
+
+def portrait_view(n):
+    """Close-up of opponent n across the board (shown small beside the board during play)."""
+    face = head_pos(RIGS["opponent%d" % n]).z + 0.06
+    return pose(Vector((0.0, -0.3, face)), Vector((OPPONENT.x, OPPONENT.y, face)))
 
 
 RING = ["card", "table", "piece", "resell"]
@@ -334,21 +382,32 @@ def render_all(cam, views):
     for name, (loc, rot, focus) in views.items():
         clear_keys(cam)
         key(cam, 1, loc, rot, focus)
-        cam.data.lens = 45 if name == "opponent" else 28
-        half = name == "opponent"
-        if name != "opponent":
-            render_clip(name, 1)
+        render_clip(name, 1)
         if name == "table":
             continue
-        # The dealer views and the opponent close-up get a seamless idle loop and reactions.
-        render_clip(name + "_idle", max(2, characters.IDLE_FRAMES // q), half)
+        # The dealer views get a seamless idle loop and reactions.
+        render_clip(name + "_idle", max(2, realistic.IDLE_FRAMES // q))
         rig = RIGS[name]
-        for r in (OPPONENT_REACTIONS if name == "opponent" else DEALER_REACTIONS):
-            characters.react(rig, r)
-            render_clip("%s_%s" % (name, r), max(2, characters.REACTION_FRAMES // q), half)
-        characters.react(rig, None)
+        for r in DEALER_REACTIONS:
+            realistic.react(rig, r)
+            render_clip("%s_%s" % (name, r), max(2, realistic.REACTION_FRAMES // q))
+        realistic.react(rig, None)
+
+    # Each opponent's close-up: idle and reactions, at half resolution.
+    cam.data.lens = 45
+    for n in range(1, ROSTER + 1):
+        show_opponent(n)
+        clear_keys(cam)
+        key(cam, 1, *portrait_view(n))
+        view = "opponent%d" % n
+        rig = RIGS[view]
+        render_clip(view + "_idle", max(2, realistic.IDLE_FRAMES // q), half=True)
+        for r in OPPONENT_REACTIONS:
+            realistic.react(rig, r)
+            render_clip("%s_%s" % (view, r), max(2, realistic.REACTION_FRAMES // q), half=True)
+        realistic.react(rig, None)
+    show_opponent(1)
     cam.data.lens = 28
-    views = {k: v for k, v in views.items() if k != "opponent"}
 
     for i, a in enumerate(RING):
         b = RING[(i + 1) % len(RING)]
@@ -360,7 +419,55 @@ def render_all(cam, views):
         key(cam, n, lb, rb, fb)
         render_clip("turn_%s_%s" % (a, b), n)
 
+    render_swaps(cam, q)
     render_intro(cam, views, q)
+
+
+SWAP_FRAMES = 48
+
+
+def lamp_levels(levels):
+    """Keys the table lamp (and the opponent's rim light) to these (frame, brightness) steps."""
+    for light in (LIGHTS["lamp"], LIGHTS["bulb"], LIGHTS["rim_opponent"]):
+        d = light.data
+        d["full"] = d.get("full", d.energy)
+        d.animation_data_clear()
+        for frame, level in levels:
+            d.energy = d["full"] * level
+            d.keyframe_insert("energy", frame=frame)
+        for fc in realistic._fcurves(d.animation_data.action):
+            for k in fc.keyframe_points:
+                k.interpolation = "CONSTANT"
+
+
+def lamp_restore():
+    for light in (LIGHTS["lamp"], LIGHTS["bulb"], LIGHTS["rim_opponent"]):
+        light.data.animation_data_clear()
+        light.data.energy = light.data.get("full", light.data.energy)
+
+
+def render_swaps(cam, q):
+    """After a win: the lamp stutters and dies on the beaten (slumped) opponent; in the dark the next
+    one takes the chair; the lamp stutters back on. Rendered as out/in halves per opponent, so any
+    pair can be joined in the dark."""
+    clear_keys(cam)
+    key(cam, 1, *pose(Vector((0, SEAT.y, EYE_SEATED)), Vector((0, OPPONENT.y, 0.98))))
+    cam.data.lens = 32
+    out_levels = [(1, 1), (17, 1), (18, 0.25), (19, 1), (23, 0.1), (24, 0.85), (26, 0), (28, 0.45), (29, 0), (SWAP_FRAMES, 0)]
+    in_levels = [(1, 0), (14, 0), (15, 0.6), (16, 0), (19, 1), (20, 0.2), (22, 1), (SWAP_FRAMES, 1)]
+    frames = max(2, SWAP_FRAMES // q)
+    for n in range(1, ROSTER + 1):
+        show_opponent(n)
+        rig = RIGS["opponent%d" % n]
+        lamp_levels(out_levels)
+        realistic.react(rig, "lose")
+        render_clip("swap_out_%d" % n, frames)
+        lamp_levels(in_levels)
+        realistic.react(rig, None)
+        render_clip("swap_in_%d" % n, frames)
+    lamp_restore()
+    show_opponent(1)
+    cam.data.lens = 28
 
 
 def intro_flicker():
@@ -371,18 +478,19 @@ def intro_flicker():
                          (14, 0.3), (16, 1.0), (31, 1.0), (32, 0.55), (33, 1.0)):
         strip.energy = full * level
         strip.keyframe_insert("energy", frame=frame)
-    for fc in characters._fcurves(strip.animation_data.action):
+    for fc in realistic._fcurves(strip.animation_data.action):
         for k in fc.keyframe_points:
             k.interpolation = "CONSTANT"  # a tube light snaps on and off
 
 
 def heads_follow(cam):
     """Every head turns to watch the camera: the opponent all along, the dealers once you walk in."""
-    for name, rig in RIGS.items():
+    for name in ("opponent", "card", "piece", "resell"):
+        rig = RIGS[name]
         head = rig.pose.bones["head"]
         track = head.constraints.new("DAMPED_TRACK")
         track.target = cam
-        track.track_axis = "TRACK_NEGATIVE_Z"  # the face looks along the head bone's -Z
+        track.track_axis = "TRACK_Z"  # on the MPFB skeleton the face looks along the head bone's +Z
         limit = head.constraints.new("LIMIT_ROTATION")
         limit.owner_space = "LOCAL"
         for axis, deg in (("x", 25), ("y", 70), ("z", 20)):
@@ -397,9 +505,10 @@ def heads_follow(cam):
 
 def opponent_gesture():
     """As you sit down, the opponent lifts his right hand and opens it toward your seat."""
-    target = bpy.data.objects["opponent_hand_R"]
+    target = bpy.data.objects[RIGS["opponent"].name + "_hand_r"]
     rest = target.location.copy()
-    for frame, offset in ((198, (0, 0, 0)), (214, (0.1, 0.2, 0.27)), (234, (0.11, 0.22, 0.28)), (250, (0, 0, 0))):
+    # In the rig's own frame: forward (toward you) is -Y, and his right hand is on the -X side.
+    for frame, offset in ((198, (0, 0, 0)), (214, (-0.06, -0.14, 0.24)), (234, (-0.07, -0.15, 0.25)), (250, (0, 0, 0))):
         target.location = rest + Vector(offset)
         target.keyframe_insert("location", frame=frame)
 

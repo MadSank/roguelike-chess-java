@@ -95,6 +95,12 @@ public class BoardViewSwing extends JPanel {
         repaint();
     }
 
+    /** Shows opponent n (1..5) in the close-up; falls back to the single "opponent" clips. */
+    public void setOpponent(int n) {
+        String view = "opponent" + n;
+        portrait.setView(SceneClip.load(view + "_idle") != null ? view : "opponent");
+    }
+
     /** The opponent reacts (think, capture, hurt, check, win, lose); ignored if not rendered. */
     public void opponentReact(String name) {
         portrait.react(name);

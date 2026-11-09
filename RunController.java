@@ -93,6 +93,16 @@ public class RunController {
 
     public int getHandSize() { return handSize(level); }
 
+    /** How many different masked opponents there are; they take turns, one per level. */
+    public static final int ROSTER_SIZE = 5;
+
+    /** Which opponent (1..ROSTER_SIZE) sits across the table at a level: 1, 2, ... 5, then 1 again. */
+    public static int opponentFor(int level) {
+        return (Math.max(1, level) - 1) % ROSTER_SIZE + 1;
+    }
+
+    public int getOpponent() { return opponentFor(level); }
+
     public List<Card> getHand() { return Collections.unmodifiableList(hand); }
 
     public boolean isPlayed(Card card) { return containsSame(played, card); }

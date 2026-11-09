@@ -17,6 +17,7 @@ public class RoguelikeChessAppSwing extends JFrame {
     private final BoardViewSwing boardView;
     private final ShopScene shopScene;
     private final IntroScene introScene;
+    private final CutScene cutScene;
     /** True while the AI is searching on a background thread. */
     private boolean aiThinking;
     /** True while the opponent reacts to the end of a round, before the summary shows. */
@@ -30,7 +31,9 @@ public class RoguelikeChessAppSwing extends JFrame {
         boardView = new BoardViewSwing(this);
         shopScene = new ShopScene(this);
         introScene = new IntroScene();
+        cutScene = new CutScene();
         sceneContainer.add(introScene, "INTRO");
+        sceneContainer.add(cutScene, "CUT");
         sceneContainer.add(menuScene, "MENU");
         sceneContainer.add(boardView, "BOARD");
         sceneContainer.add(shopScene, "SHOP");
@@ -74,6 +77,7 @@ public class RoguelikeChessAppSwing extends JFrame {
         aiThinking = false;
         roundEnding = false;
         boardView.setOpponentThinking(false);
+        boardView.setOpponent(run.getOpponent());
         boardView.refresh();
         sceneLayout.show(sceneContainer, "BOARD");
         AudioPlayer.playMusic("battle.wav", true);
@@ -278,9 +282,26 @@ public class RoguelikeChessAppSwing extends JFrame {
                 s.madeLeaderboard ? "\nYou made the leaderboard!" : ""),
                 "Game Over", JOptionPane.ERROR_MESSAGE);
             showMenu();
+        } else if (s.result == GameResult.WHITE_WINS) {
+            swapOpponents(s.level, s.nextLevel);
         } else {
             showShop();
         }
+    }
+
+    /**
+     * After a win: the lamp dies on the beaten opponent and comes back on the next one
+     * (pre-rendered "swap_out_<n>" and "swap_in_<n>"), then the shop. Skipped if not rendered.
+     */
+    private void swapOpponents(int beatenLevel, int nextLevel) {
+        String[] clips = {"swap_out_" + RunController.opponentFor(beatenLevel),
+                          "swap_in_" + RunController.opponentFor(nextLevel)};
+        if (!SceneClip.available(clips)) {
+            showShop();
+            return;
+        }
+        sceneLayout.show(sceneContainer, "CUT");
+        cutScene.play(clips, this::showShop);
     }
 
     public static void main(String[] args) {

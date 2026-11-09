@@ -23,6 +23,14 @@ TEXTURES = {
     "brown_leather": "1k",
     "long_white_tiles": "1k",
     "dirty_tiles": "1k",
+    # Fabrics for the realistic characters' robes, hoods and gloves.
+    "caban": "2k",
+    "hessian_230": "2k",
+    "poly_wool_herringbone": "2k",
+    "rough_linen": "2k",
+    "knitted_fleece": "2k",
+    "velour_velvet": "2k",
+    "fabric_leather_02": "1k",
 }
 # Models: id -> resolution (glTF with its textures).
 MODELS = {

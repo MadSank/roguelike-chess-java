@@ -9,6 +9,14 @@ import java.util.*;
  */
 public class TestRunFlow {
 
+    /** Opponents take turns by level, cycling through the roster. */
+    private static void roster() {
+        TestSupport.check(RunController.opponentFor(1) == 1, "level 1 faces opponent 1");
+        TestSupport.check(RunController.opponentFor(5) == 5, "level 5 faces opponent 5");
+        TestSupport.check(RunController.opponentFor(6) == 1, "level 6 cycles back to opponent 1");
+        TestSupport.check(RunController.opponentFor(14) == 4, "level 14 faces opponent 4");
+    }
+
     public static void main(String[] args) throws Exception {
         System.out.println("== TestRunFlow ==");
         TestSupport.quiet(() -> {});
@@ -20,6 +28,7 @@ public class TestRunFlow {
         bonuses();
         handRules();
         timeStopFlow();
+        roster();
         TestSupport.finish("TestRunFlow");
     }
 
