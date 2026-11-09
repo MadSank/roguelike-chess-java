@@ -231,7 +231,7 @@ public class ShopScene extends JPanel {
         g.drawRoundRect(sx, sy, sideW, sh, 8, 8);
         g.setColor(CRIMSON_DIM);
         g.setFont(new Font("Serif", Font.BOLD, 14));
-        centered(g, "YOUR CARDS", sx + sideW / 2, sy + 20);
+        centered(g, "STASH  (hand " + run().getHandSize() + ")", sx + sideW / 2, sy + 20);
 
         List<Card> owned = shop().getCards().getActiveCards();
         if (owned.isEmpty()) {
@@ -259,7 +259,7 @@ public class ShopScene extends JPanel {
         g.setStroke(new BasicStroke(1));
         g.setColor(card.isGlobal() ? new Color(180, 140, 40) : new Color(40, 120, 180));
         g.setFont(new Font("SansSerif", Font.BOLD, 9));
-        centered(g, card.isGlobal() ? "GLOBAL" : "LOCAL", x + w / 2, y + 16);
+        centered(g, card.getRarity() + " · " + (card.isGlobal() ? "GLOBAL" : "LOCAL"), x + w / 2, y + 16);
         g.setColor(Color.WHITE);
         g.setFont(new Font("Serif", Font.BOLD, 13));
         centered(g, card.getName(), x + w / 2, y + 36);

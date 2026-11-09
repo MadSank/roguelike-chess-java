@@ -19,6 +19,10 @@ public class BoardViewSwing extends JPanel {
     private int selectedRow = -1, selectedCol = -1;
     private List<Move> legalMoves = new ArrayList<>();
 
+    /** Play buttons of the hand panel, registered while painting (same order as handCards). */
+    private final List<Rectangle> handButtons = new ArrayList<>();
+    private final List<Card> handCards = new ArrayList<>();
+
     /** Floating messages (bonus pop-ups): text and the time it appeared. */
     private final List<Object[]> toasts = new ArrayList<>();
     private final Timer toastTimer;
@@ -42,6 +46,13 @@ public class BoardViewSwing extends JPanel {
         setBackground(BG);
         addMouseListener(new MouseAdapter() {
             @Override public void mouseClicked(MouseEvent e) {
+                for (int i = 0; i < handButtons.size(); i++) {
+                    if (handButtons.get(i).contains(e.getPoint())) {
+                        app.onPlayCard(handCards.get(i));
+                        return;
+                    }
+                }
+                if (e.getX() >= BOARD_SIZE) return;
                 int row = e.getY() / SQUARE_SIZE;
                 int col = e.getX() / SQUARE_SIZE;
                 if (Square.insideBoard(row, col)) handleBoardClick(row, col);
@@ -159,7 +170,97 @@ public class BoardViewSwing extends JPanel {
         drawHighlights(g, state);
         drawVignette(g);
         drawStatusBar(g, state);
+        drawHandPanel(g, state);
         drawToasts(g);
+    }
+
+    /** Right-hand panel: the cards in hand, each with a Play button (or ACTIVE once played). */
+    private void drawHandPanel(Graphics2D g, GameState state) {
+        handButtons.clear();
+        handCards.clear();
+        RunController run = app.getRun();
+        int x = BOARD_SIZE + 12, w = getWidth() - x - 10;
+        if (w < 120) return;
+        g.setColor(new Color(15, 12, 22));
+        g.fillRoundRect(x, 6, w, getHeight() - 12, 10, 10);
+        g.setColor(new Color(80, 30, 40));
+        g.drawRoundRect(x, 6, w, getHeight() - 12, 10, 10);
+        g.setFont(new Font("Serif", Font.BOLD, 15));
+        g.setColor(CRIMSON);
+        g.drawString("HAND", x + 10, 28);
+        g.setFont(new Font("SansSerif", Font.PLAIN, 10));
+        g.setColor(TEXT_DIM);
+        g.drawString("Playing a card is free.", x + 10, 44);
+        g.drawString("It lasts until the round ends.", x + 10, 56);
+
+        List<Card> hand = run.getHand();
+        if (hand.isEmpty()) {
+            g.drawString("No cards in hand.", x + 10, 80);
+            return;
+        }
+        boolean canPlay = state.whiteToMove && !state.gameOver && !app.isAiThinking();
+        int cardH = Math.min(78, (getHeight() - 76) / hand.size());
+        for (int i = 0; i < hand.size(); i++) {
+            Card c = hand.get(i);
+            int y = 66 + i * cardH;
+            boolean played = run.isPlayed(c);
+            g.setColor(played ? new Color(35, 28, 45) : new Color(25, 20, 32));
+            g.fillRoundRect(x + 6, y, w - 12, cardH - 6, 8, 8);
+            g.setColor(rarityColour(c));
+            g.drawRoundRect(x + 6, y, w - 12, cardH - 6, 8, 8);
+            g.setFont(new Font("Serif", Font.BOLD, 12));
+            g.drawString(c.getName(), x + 12, y + 15);
+            g.setFont(new Font("SansSerif", Font.PLAIN, 9));
+            g.setColor(TEXT_DIM);
+            wrap(g, c.getDescription(), x + 12, y + 28, w - 24, 10, 2);
+
+            Rectangle btn = new Rectangle(x + w - 66, y + cardH - 26, 54, 16);
+            if (played) {
+                g.setColor(new Color(90, 190, 110));
+                g.setFont(new Font("SansSerif", Font.BOLD, 10));
+                g.drawString("ACTIVE", btn.x + 8, btn.y + 12);
+            } else {
+                g.setColor(canPlay ? new Color(70, 30, 40) : new Color(35, 32, 38));
+                g.fillRoundRect(btn.x, btn.y, btn.width, btn.height, 6, 6);
+                g.setColor(canPlay ? Color.WHITE : new Color(110, 105, 115));
+                g.setFont(new Font("SansSerif", Font.BOLD, 10));
+                g.drawString("PLAY", btn.x + 15, btn.y + 12);
+                if (canPlay) {
+                    handButtons.add(btn);
+                    handCards.add(c);
+                }
+            }
+        }
+    }
+
+    private static Color rarityColour(Card c) {
+        switch (c.getRarity()) {
+            case RARE: return new Color(220, 120, 255);
+            case UNCOMMON: return new Color(90, 170, 240);
+            default: return new Color(170, 160, 150);
+        }
+    }
+
+    /** Word-wraps text, up to maxLines lines. */
+    private static void wrap(Graphics2D g, String text, int x, int y, int maxW, int lineH, int maxLines) {
+        FontMetrics fm = g.getFontMetrics();
+        StringBuilder line = new StringBuilder();
+        int lines = 0;
+        for (String word : text.split(" ")) {
+            if (line.length() > 0 && fm.stringWidth(line + " " + word) > maxW) {
+                if (++lines == maxLines) {
+                    g.drawString(line + "…", x, y);
+                    return;
+                }
+                g.drawString(line.toString(), x, y);
+                y += lineH;
+                line = new StringBuilder(word);
+            } else {
+                if (line.length() > 0) line.append(' ');
+                line.append(word);
+            }
+        }
+        if (line.length() > 0) g.drawString(line.toString(), x, y);
     }
 
     private void drawBoard(Graphics2D g) {

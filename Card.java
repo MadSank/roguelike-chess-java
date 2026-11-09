@@ -29,6 +29,7 @@ public abstract class Card implements Serializable {
     public String getDescription() { return description; }
     public int getCost() { return cost; }
     public boolean isGlobal() { return global; }
+    public CardCatalog.Rarity getRarity() { return CardCatalog.rarityOf(this); }
 
     // ─── HOOK METHODS (override as needed) ───────────────────────
 
@@ -51,10 +52,11 @@ public abstract class Card implements Serializable {
     }
 
     /**
-     * Called once when the game round starts (after board setup).
-     * Use for one-time board mutations (Blood Moon, Minefield).
+     * Called once when the player plays the card from their hand during a round.
+     * From then on the card is active until the round ends. Use for one-time effects
+     * at the moment of play (Blood Moon transforms pawns, Minefield lays mines).
      */
-    public void onGameStart(GameState state) {
+    public void onPlay(GameState state) {
         // no-op
     }
 

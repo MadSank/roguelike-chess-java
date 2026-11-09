@@ -46,6 +46,27 @@ public class ChessEngine {
         return true;
     }
 
+    /**
+     * The side to move gives up its turn (Time Stop card). Counts as a move for the
+     * repetition and 50-move bookkeeping. Returns false if the game is over.
+     */
+    public boolean passTurn() {
+        if (state.gameOver) return false;
+        history.push(state.copy());
+        if (state.positionHistory.isEmpty()) state.positionHistory.add(state.positionKey());
+        state.enPassantTarget = null;
+        state.halfmoveClock++;
+        state.whiteToMove = !state.whiteToMove;
+        state.positionHistory.add(state.positionKey());
+        checkEndConditions();
+        return true;
+    }
+
+    /** Re-checks mate, stalemate and draws after something other than a move changed the board (a card). */
+    public void refreshEndConditions() {
+        checkEndConditions();
+    }
+
     /** Takes back the last move played with applyMove. */
     public boolean undo() {
         if (history.isEmpty()) return false;

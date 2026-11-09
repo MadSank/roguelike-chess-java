@@ -16,7 +16,7 @@ public class CardMinefield extends Card {
     }
 
     @Override
-    public void onGameStart(GameState state) {
+    public void onPlay(GameState state) {
         if (state.minefieldSquares == null) {
             state.minefieldSquares = new HashSet<>();
         }

@@ -22,10 +22,14 @@ public class RunController {
         public final boolean gameOver;
         public final boolean madeLeaderboard;
         public final int highestLevelBeaten;
+        /** Names of cards that left the stash this round. */
+        public final List<String> cardsUsedUp;
 
         RoundSummary(GameResult result, String resultText, int level, Economy.Payout payout,
                      List<MoveBonuses.Bonus> bonuses, int goldAfter, int nextLevel,
-                     boolean gameOver, boolean madeLeaderboard, int highestLevelBeaten) {
+                     boolean gameOver, boolean madeLeaderboard, int highestLevelBeaten,
+                     List<String> cardsUsedUp) {
+            this.cardsUsedUp = cardsUsedUp;
             this.result = result;
             this.resultText = resultText;
             this.level = level;
@@ -53,6 +57,13 @@ public class RunController {
     private int blackMaterialAtStart;
     private final List<MoveBonuses.Bonus> roundBonuses = new ArrayList<>();
 
+    /** Cards taken into the current (or next) round, chosen from the stash. */
+    private final List<Card> hand = new ArrayList<>();
+    /** Cards from the hand played this round (they are used up when the round ends). */
+    private final List<Card> played = new ArrayList<>();
+    /** Messages for the UI about things that just happened (e.g. "AI skips its turn"). */
+    private final List<String> events = new ArrayList<>();
+
     public RunController(ScoreManager scores, Chess960Setup setup, Random rng) {
         this.scores = scores;
         this.setup = setup;
@@ -75,6 +86,84 @@ public class RunController {
     public int getRequirement() { return Economy.requirement(level); }
     public int getAiDepth() { return Difficulty.forLevel(level).searchDepth; }
 
+    /** Hand size: 5 cards, +1 every 3 levels (6 at level 4, 7 at level 7, ...). */
+    public static int handSize(int level) {
+        return 5 + (Math.max(1, level) - 1) / 3;
+    }
+
+    public int getHandSize() { return handSize(level); }
+
+    public List<Card> getHand() { return Collections.unmodifiableList(hand); }
+
+    public boolean isPlayed(Card card) { return containsSame(played, card); }
+
+    /** Messages since the last call (and clears them). */
+    public List<String> takeEvents() {
+        List<String> e = new ArrayList<>(events);
+        events.clear();
+        return e;
+    }
+
+    // ─── HAND ───────────────────────────────────────────────────
+
+    /**
+     * Chooses the cards to take into the next round: at most the hand size, all from the stash.
+     * @return false (hand unchanged) if the choice isn't allowed
+     */
+    public boolean setHand(List<Card> chosen) {
+        if (chosen.size() > getHandSize()) return false;
+        List<Card> stash = new ArrayList<>(shop.getCards().getActiveCards());
+        for (Card c : chosen) {
+            if (!removeSame(stash, c)) return false; // not in the stash (or picked twice)
+        }
+        hand.clear();
+        hand.addAll(chosen);
+        return true;
+    }
+
+    /** Drops hand cards that are no longer in the stash (sold) and fills an empty hand automatically. */
+    private void validateHand() {
+        List<Card> stash = new ArrayList<>(shop.getCards().getActiveCards());
+        hand.removeIf(c -> !removeSame(stash, c));
+        if (hand.isEmpty()) {
+            List<Card> all = shop.getCards().getActiveCards();
+            hand.addAll(all.subList(0, Math.min(getHandSize(), all.size())));
+        }
+    }
+
+    /**
+     * Plays a card from the hand. Doesn't use up the player's move; the card stays active
+     * until the round ends.
+     * @return null on success, otherwise why it can't be played
+     */
+    public String playCard(Card card) {
+        GameState s = engine.getGameState();
+        if (phase != Phase.PLAYING || s.gameOver) return "No round in progress.";
+        if (!s.whiteToMove) return "Wait for your turn.";
+        if (!containsSame(hand, card)) return "That card isn't in your hand.";
+        if (containsSame(played, card)) return "Already played.";
+        if (s.cardManager.isActive(card)) return card.getName() + " is already active.";
+        s.cardManager.play(card, s);
+        played.add(card);
+        engine.refreshEndConditions();
+        return null;
+    }
+
+    private static boolean containsSame(List<Card> list, Card card) {
+        for (Card c : list) if (c == card) return true;
+        return false;
+    }
+
+    private static boolean removeSame(List<Card> list, Card card) {
+        for (Iterator<Card> it = list.iterator(); it.hasNext(); ) {
+            if (it.next() == card) {
+                it.remove();
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** Gold shown during a round includes what cards like Golden Edge paid so far. */
     public int getGold() {
         return phase == Phase.PLAYING ? engine.getGameState().goldPlayer : shop.getGold();
@@ -88,6 +177,7 @@ public class RunController {
         shop.resetForNewRun();
         level = 1;
         highestLevelBeaten = 0;
+        hand.clear();
         startRound();
     }
 
@@ -106,14 +196,16 @@ public class RunController {
         s.roundNumber = level;
         s.aiDepth = getAiDepth();
         s.goldPlayer = shop.getGold();
-        s.cardManager = shop.getCards().copy();
+        s.cardManager = new CardManager(); // cards become active only when played
         setup.setupCustomChess960Board(s, shop.getArmy());
-        s.cardManager.onGameStart(s);
 
         engine = new ChessEngine(s);
         ai = new AIPlayer(Difficulty.forLevel(level), rng);
         blackMaterialAtStart = Economy.material(s, false);
         roundBonuses.clear();
+        played.clear();
+        events.clear();
+        validateHand();
         phase = Phase.PLAYING;
         return true;
     }
@@ -131,7 +223,18 @@ public class RunController {
             ? Collections.emptyList()
             : MoveBonuses.detect(before, played, engine.getGameState());
         roundBonuses.addAll(earned);
+        applyTimeStop();
         return earned;
+    }
+
+    /** Time Stop: the AI loses its turn, unless it is in check (then the skip waits). */
+    private void applyTimeStop() {
+        GameState s = engine.getGameState();
+        if (s.gameOver || s.getCounter(CardTimeStop.PENDING) == 0) return;
+        if (engine.isKingInCheck(s, false)) return;
+        s.setCounter(CardTimeStop.PENDING, 0);
+        engine.passTurn();
+        events.add("Time Stop: the AI skips its turn");
     }
 
     /** The engine's own version of the move (with capture / en passant / sniper flags). */
@@ -204,6 +307,15 @@ public class RunController {
                 shop.clearArmy(); // only the King remains
         }
 
+        // Cards played are used up. After a loss, unplayed hand cards are lost too;
+        // after a win or draw they stay in the stash.
+        List<String> cardsUsedUp = new ArrayList<>();
+        for (Card c : (result == GameResult.BLACK_WINS ? hand : played)) {
+            if (shop.getCards().removeCard(c)) cardsUsedUp.add(c.getName());
+        }
+        hand.clear();
+        played.clear();
+
         boolean gameOver = !shop.canStillReach(level);
         boolean madeBoard = false;
         if (gameOver) {
@@ -214,7 +326,7 @@ public class RunController {
             shop.generateCardOfferings(level, rng);
         }
         return new RoundSummary(result, s.gameResult, playedLevel, payout, bonuses, shop.getGold(),
-            level, gameOver, madeBoard, highestLevelBeaten);
+            level, gameOver, madeBoard, highestLevelBeaten, cardsUsedUp);
     }
 
     /** Leaves the shop. Returns false if the army doesn't meet the requirement yet. */

@@ -18,6 +18,8 @@ public class TestRunFlow {
         winThenLossThenGameOver();
         draw();
         bonuses();
+        handRules();
+        timeStopFlow();
         TestSupport.finish("TestRunFlow");
     }
 
@@ -169,6 +171,62 @@ public class TestRunFlow {
         ChessEngine qe = new ChessEngine(quiet);
         Move m = TestSupport.findMove(qe, "h1h2");
         TestSupport.check(MoveBonuses.detect(quiet, m, qe.simulateMove(quiet, m)).isEmpty(), "a quiet move earns nothing");
+    }
+
+    static void handRules() throws Exception {
+        System.out.println("-- hand and card use");
+        TestSupport.checkEquals(5, RunController.handSize(1), "hand holds 5 at level 1");
+        TestSupport.checkEquals(6, RunController.handSize(4), "+1 at level 4");
+        TestSupport.checkEquals(8, RunController.handSize(10), "8 at level 10");
+
+        RunController run = newRun();
+        forceResult(run, GameResult.DRAW);
+        run.finishRound();
+        Card edge = new CardGoldenEdge(), surge = new CardPawnSurge();
+        run.getShop().getCards().addCard(edge);
+        run.getShop().getCards().addCard(surge);
+        TestSupport.check(!run.setHand(Arrays.asList(new CardTimeStop())), "can't take a card you don't own");
+        TestSupport.check(run.setHand(Arrays.asList(edge, surge)), "hand chosen from the stash");
+        TestSupport.check(run.finishShopping(), "round starts");
+        TestSupport.check(run.getRoundState().cardManager.getActiveCards().isEmpty(), "no card is active until played");
+
+        TestSupport.checkEquals(null, run.playCard(edge), "card played");
+        TestSupport.check(run.getRoundState().whiteToMove, "playing a card doesn't use your move");
+        TestSupport.check(run.getRoundState().cardManager.isActive(edge), "played card is active");
+        TestSupport.check(run.playCard(edge) != null, "a card can't be played twice");
+
+        forceResult(run, GameResult.DRAW);
+        RunController.RoundSummary d = run.finishRound();
+        List<Card> stash = run.getShop().getCards().getActiveCards();
+        TestSupport.check(!stash.contains(edge) && stash.contains(surge), "draw: played card used up, unplayed card kept");
+        TestSupport.checkEquals(Arrays.asList("Golden Edge"), d.cardsUsedUp, "summary lists the used-up card");
+
+        run.setHand(Arrays.asList(surge));
+        run.finishShopping();
+        forceResult(run, GameResult.BLACK_WINS);
+        run.finishRound();
+        TestSupport.check(run.getShop().getCards().getActiveCards().isEmpty(), "loss: unplayed hand cards are lost too");
+    }
+
+    static void timeStopFlow() throws Exception {
+        System.out.println("-- Time Stop in a round");
+        RunController run = newRun();
+        forceResult(run, GameResult.DRAW);
+        run.finishRound();
+        Card stop = new CardTimeStop();
+        run.getShop().getCards().addCard(stop);
+        run.setHand(Arrays.asList(stop));
+        run.finishShopping();
+        run.playCard(stop);
+        ChessEngine e = run.getEngine();
+        Move quiet = null;
+        for (Move m : e.getAllLegalMoves(true)) {
+            GameState after = e.simulateMove(e.getGameState(), m);
+            if (!m.isCapture && !e.isKingInCheck(after, false)) { quiet = m; break; }
+        }
+        run.playerMove(quiet);
+        TestSupport.check(run.getRoundState().whiteToMove, "after your move it's your turn again");
+        TestSupport.check(run.takeEvents().contains("Time Stop: the AI skips its turn"), "the UI is told why");
     }
 
     static void checkBonus(String fen, String uci, String bonus) {

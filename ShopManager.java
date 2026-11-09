@@ -129,13 +129,16 @@ public class ShopManager {
 
     // ─── CARDS ──────────────────────────────────────────────────
 
-    /** Rolls this shop visit's offers: 3 face-up cards and a separate 3-card mystery pack. */
+    /**
+     * Rolls this shop visit's offers: 3 face-up cards and a 3-card mystery pack with no card
+     * in common, weighted by rarity for the level. Cards are consumables, so owning a card
+     * doesn't stop it being offered again.
+     */
     public void generateCardOfferings(int level, Random rng) {
-        List<Card> available = cards.availableCards();
-        Collections.shuffle(available, rng);
-        int faceUp = Math.min(3, available.size());
-        faceUpCards = new ArrayList<>(available.subList(0, faceUp));
-        mysteryPack = new ArrayList<>(available.subList(faceUp, Math.min(faceUp + 3, available.size())));
+        faceUpCards = CardCatalog.drawOffer(3, level, rng, Collections.emptySet());
+        Set<String> shown = new HashSet<>();
+        for (Card c : faceUpCards) shown.add(c.getName());
+        mysteryPack = CardCatalog.drawOffer(3, level, rng, shown);
         mysteryPackOpened = false;
     }
 

@@ -28,6 +28,12 @@ public class TestCards {
         cavalryCharge();
         bloodMoon();
         vaultingMajors();
+        catalog();
+        pawnSurge();
+        pawnRetreat();
+        bishopShift();
+        kingsStride();
+        timeStop();
         TestSupport.finish("TestCards");
     }
 
@@ -38,12 +44,62 @@ public class TestCards {
     }
 
     static Card[] allCards() {
-        return new Card[] {
-            new CardCavalryCharge(), new CardPawnPhalanx(), new CardSniperBishops(), new CardGoldenEdge(),
-            new CardNecromancerGambit(), new CardVaultingMajors(), new CardPhantomKing(), new CardSoulHarvest(),
-            new CardGlassCannons(), new CardTrenchWarfare(), new CardBloodMoon(), new CardMinefield(),
-            new CardHeavyArmor(), new CardChronoShift(),
-        };
+        return CardCatalog.all().toArray(new Card[0]);
+    }
+
+    static void catalog() {
+        System.out.println("-- catalog");
+        Set<String> names = new HashSet<>();
+        for (Card c : CardCatalog.all()) names.add(c.getName());
+        TestSupport.checkEquals(19, names.size(), "19 distinct cards in the catalog");
+        Map<CardCatalog.Rarity, Integer> seen = new EnumMap<>(CardCatalog.Rarity.class);
+        Random rng = new Random(3);
+        for (int i = 0; i < 2000; i++) {
+            for (Card c : CardCatalog.drawOffer(3, 10, rng, Collections.emptySet())) seen.merge(c.getRarity(), 1, Integer::sum);
+        }
+        TestSupport.check(seen.getOrDefault(CardCatalog.Rarity.COMMON, 0) > seen.getOrDefault(CardCatalog.Rarity.RARE, 0),
+            "commons are offered more often than rares " + seen);
+        TestSupport.check(CardCatalog.shopWeight(CardCatalog.Rarity.RARE, 12) > CardCatalog.shopWeight(CardCatalog.Rarity.RARE, 1),
+            "rares get more likely at higher levels");
+    }
+
+    static void pawnSurge() {
+        System.out.println("-- Pawn Surge");
+        GameState s = with("k7/8/8/8/8/4P3/8/K7 w - - 0", new CardPawnSurge());
+        TestSupport.check(TestSupport.findMove(new ChessEngine(s), "e3e5") != null, "pawn off its start rank advances two");
+        GameState p = with("k7/8/4P3/8/8/8/8/K7 w - - 0", new CardPawnSurge());
+        TestSupport.check(TestSupport.findMove(new ChessEngine(p), "e6e8n") != null, "surging onto the last rank promotes");
+    }
+
+    static void pawnRetreat() {
+        System.out.println("-- Pawn Retreat");
+        GameState s = with("k7/8/8/4P3/8/8/8/K7 w - - 0", new CardPawnRetreat());
+        TestSupport.check(TestSupport.findMove(new ChessEngine(s), "e5e4") != null, "pawn steps backward");
+        GameState t = with("k7/8/8/8/8/8/4P3/K7 w - - 0", new CardPawnRetreat());
+        TestSupport.checkEquals(null, TestSupport.findMove(new ChessEngine(t), "e2e1"), "never back onto the first rank");
+    }
+
+    static void bishopShift() {
+        System.out.println("-- Bishop Shift");
+        GameState s = with("k7/8/8/8/3B4/8/8/K7 w - - 0", new CardBishopShift());
+        TestSupport.check(TestSupport.findMove(new ChessEngine(s), "d4e4") != null, "bishop steps sideways");
+    }
+
+    static void kingsStride() {
+        System.out.println("-- King's Stride");
+        GameState s = with("k7/8/8/8/8/8/8/4K3 w - - 0", new CardKingsStride());
+        TestSupport.check(TestSupport.findMove(new ChessEngine(s), "e1e3") != null, "king moves two squares");
+        GameState b = with("k7/8/8/8/8/8/4P3/4K3 w - - 0", new CardKingsStride());
+        TestSupport.checkEquals(null, TestSupport.findMove(new ChessEngine(b), "e1e3"), "not through a piece");
+    }
+
+    static void timeStop() {
+        System.out.println("-- Time Stop");
+        GameState s = TestSupport.fromFen("k7/8/8/8/8/8/8/K6R b - - 0"); // AI to move
+        new CardTimeStop().onPlay(s);
+        TestSupport.checkEquals(1, s.getCounter(CardTimeStop.PENDING), "playing it arms the skip");
+        ChessEngine e = new ChessEngine(s);
+        TestSupport.check(e.passTurn() && s.whiteToMove, "passing hands the move back to White");
     }
 
     static void cardsHaveNoState() {
@@ -226,7 +282,7 @@ public class TestCards {
     static void bloodMoon() {
         System.out.println("-- Blood Moon");
         GameState s = with("k7/p7/8/8/8/8/P7/K7 w - - 0", new CardBloodMoon());
-        TestSupport.quiet(() -> s.cardManager.onGameStart(s));
+        TestSupport.quiet(() -> s.cardManager.getActiveCards().get(0).onPlay(s));
         TestSupport.check(s.board[6][0] instanceof Knight && s.board[1][0] instanceof Knight, "all pawns become knights");
     }
 

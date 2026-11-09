@@ -11,8 +11,8 @@ A roguelike chess run against an AI that gets stronger every level. Cards give r
    - Buy pieces until your army meets the level's **material requirement**. *Continue* is locked until it is met.
    - Buy cards into your **stash**.
    - Pieces and cards can be **sold back for half** their price.
-2. **Hand**: pick up to **5 cards** from the stash to take into the round. Hand size can be upgraded at key levels.
-3. **Play the round** under normal chess rules. Cards in hand can be played at any point, subject to each card's conditions.
+2. **Hand**: pick up to **5 cards** from the stash to take into the round, **+1 every 3 levels** (6 at level 4, 7 at level 7, 8 at level 10, ...).
+3. **Play the round** under normal chess rules. Like items in Buckshot Roulette, cards in hand are played on your turn, any number per turn, and **playing one does not use your move**. A played card stays active until the round ends.
 4. **Result**
 
    | Result | Pieces | Cards played | Cards not played | Coins | Next |
@@ -21,7 +21,7 @@ A roguelike chess run against an AI that gets stronger every level. Cards give r
    | Draw | survivors carry over | gone | back to stash | small payout | replay same level |
    | Loss (checkmated) | only the King remains | gone | gone | none | replay same level |
 
-5. **Game over**: when you cannot reach the level's requirement, even after selling everything.
+5. **Game over**: when you cannot reach the level's requirement, even after selling everything. (A new run starts with 0 gold, so losing level 1 ends the run; this is intended.)
 
 ## Game end (normal chess rules, no move cap)
 - Checkmate: win or loss.
@@ -56,6 +56,7 @@ A roguelike chess run against an AI that gets stronger every level. Cards give r
 
 - The AI mirrors the player's army.
 - A new run starts with King + 2 Pawns.
+- No limit on how many of a piece type you own (promotions would break one); only board space limits it (7 pieces besides the King on the back rank, 8 pawns).
 
 ## AI
 - Difficulty comes from a per-level table (search depth, time budget, evaluation quality, blunder chance), not raw depth alone; practical search depth tops out around 6–8.
@@ -63,8 +64,11 @@ A roguelike chess run against an AI that gets stronger every level. Cards give r
 - Current table (Difficulty.java): depth 1 at level 1 rising to 6 at level 14+, think time 0.5 s → 4 s, evaluation from material-only up to piece placement, capture search from level 5, and a chance of a random move (30% at level 1, 0% from level 6).
 
 ## Cards
-- Cards are one-round consumables, played from the hand during a round.
+- Cards are one-round consumables, played from the hand during a round (see Run loop). You can own several copies of a card, but each card can only be active once per round.
+- **Local** cards help only the player. **Global** cards change the rules for both sides.
+- Rarity: Common, Uncommon, Rare. The shop weights offers by rarity, and rares get more likely at higher levels. All cards live in CardCatalog.java (one line per card).
 - Card abilities may not capture or target a King (snipe, vault, etc.) for now.
+- 19 cards: the original 14 plus Pawn Surge, Pawn Retreat, Bishop Shift, King's Stride and Time Stop (rebuilt from the oldest version's powerups).
 
 ## Leaderboard
 - Ranked by the highest level beaten.

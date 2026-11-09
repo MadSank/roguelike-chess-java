@@ -46,35 +46,15 @@ public class CardManager implements Serializable {
         return cm;
     }
 
-    /** Every card in the game. */
-    public static List<Card> allCards() {
-        List<Card> pool = new ArrayList<>();
-        // Local cards (help only the player)
-        pool.add(new CardCavalryCharge());
-        pool.add(new CardPawnPhalanx());
-        pool.add(new CardSniperBishops());
-        pool.add(new CardGoldenEdge());
-        pool.add(new CardNecromancerGambit());
-        pool.add(new CardVaultingMajors());
-        pool.add(new CardPhantomKing());
-        pool.add(new CardSoulHarvest());
-        // Global cards (change the rules for both sides)
-        pool.add(new CardGlassCannons());
-        pool.add(new CardTrenchWarfare());
-        pool.add(new CardBloodMoon());
-        pool.add(new CardMinefield());
-        pool.add(new CardHeavyArmor());
-        pool.add(new CardChronoShift());
-        return pool;
+    /** True if a card with the same name is already active. */
+    public boolean isActive(Card card) {
+        return activeCards.contains(card);
     }
 
-    /** Cards not owned yet, i.e. the ones the shop may offer. */
-    public List<Card> availableCards() {
-        List<Card> available = new ArrayList<>();
-        for (Card c : allCards()) {
-            if (!activeCards.contains(c)) available.add(c);
-        }
-        return available;
+    /** Plays a card: it becomes active and its onPlay effect fires. */
+    public void play(Card card, GameState state) {
+        activeCards.add(card);
+        card.onPlay(state);
     }
 
     // ─── ENGINE HOOKS (hot path) ────────────────────────────────
@@ -145,12 +125,6 @@ public class CardManager implements Serializable {
     public void onMovePerformed(GameState state, Move move) {
         for (int i = 0, n = activeCards.size(); i < n; i++) {
             activeCards.get(i).onMovePerformed(state, move);
-        }
-    }
-
-    public void onGameStart(GameState state) {
-        for (int i = 0, n = activeCards.size(); i < n; i++) {
-            activeCards.get(i).onGameStart(state);
         }
     }
 

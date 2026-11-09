@@ -25,7 +25,7 @@ public class CardVaultingMajors extends Card {
     }
 
     @Override
-    public void onGameStart(GameState state) {
+    public void onPlay(GameState state) {
         // Pick a random friendly Rook or Queen to be the "vaulter"
         List<Integer> candidates = new ArrayList<>();
         for (int r = 0; r < 8; r++) {

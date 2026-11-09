@@ -77,9 +77,56 @@ public class RoguelikeChessAppSwing extends JFrame {
 
     /** Shop "Continue" button. Returns false if the requirement isn't met yet. */
     public boolean onShoppingComplete() {
+        if (!run.getShop().meetsRequirement(run.getLevel())) return false;
+        if (!chooseHand()) return true; // player cancelled the hand picker: stay in the shop
         if (!run.finishShopping()) return false;
         showBoard();
         return true;
+    }
+
+    /** Lets the player pick which stash cards to take into the round. Returns false if cancelled. */
+    private boolean chooseHand() {
+        List<Card> stash = run.getShop().getCards().getActiveCards();
+        if (stash.isEmpty()) return true;
+        int max = run.getHandSize();
+        JPanel panel = new JPanel(new GridLayout(0, 1, 2, 2));
+        panel.add(new JLabel("Take up to " + max + " cards into level " + run.getLevel()
+            + ". Cards you play are used up; if you lose, your whole hand is lost."));
+        List<JCheckBox> boxes = new java.util.ArrayList<>();
+        for (int i = 0; i < stash.size(); i++) {
+            Card c = stash.get(i);
+            JCheckBox box = new JCheckBox(c.getName() + "  [" + c.getRarity() + (c.isGlobal() ? ", global" : "") + "]  "
+                + c.getDescription(), i < max);
+            box.addActionListener(e -> {
+                long checked = boxes.stream().filter(JCheckBox::isSelected).count();
+                if (checked > max) box.setSelected(false);
+            });
+            boxes.add(box);
+            panel.add(box);
+        }
+        while (true) {
+            int ok = JOptionPane.showConfirmDialog(this, new JScrollPane(panel), "Choose your hand",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+            if (ok != JOptionPane.OK_OPTION) return false;
+            List<Card> chosen = new java.util.ArrayList<>();
+            for (int i = 0; i < boxes.size(); i++) if (boxes.get(i).isSelected()) chosen.add(stash.get(i));
+            if (run.setHand(chosen)) return true;
+            JOptionPane.showMessageDialog(this, "Pick at most " + max + " cards.");
+        }
+    }
+
+    /** Hand panel "Play" button. Playing a card doesn't use your move. */
+    public void onPlayCard(Card card) {
+        if (aiThinking) return;
+        String error = run.playCard(card);
+        if (error != null) {
+            boardView.showToast(error);
+            return;
+        }
+        AudioPlayer.playMoveSound();
+        boardView.showToast(card.getName() + " played");
+        boardView.refresh();
+        if (run.isRoundOver()) endRound();
     }
 
     /** Shop "Give up" button. */
@@ -105,13 +152,14 @@ public class RoguelikeChessAppSwing extends JFrame {
         AudioPlayer.playMoveSound();
         if (move.isCapture) AudioPlayer.playCaptureSound();
         for (MoveBonuses.Bonus b : bonuses) boardView.showToast(b.toString() + " gold");
+        for (String e : run.takeEvents()) boardView.showToast(e);
         boardView.refresh();
 
         if (run.isRoundOver()) {
             endRound();
-        } else {
+        } else if (run.isAiTurn()) {
             performAIMove();
-        }
+        } // otherwise (Time Stop) it's the player's turn again
     }
 
     /** Runs the AI search off the Swing thread so the window stays responsive. */
@@ -169,6 +217,9 @@ public class RoguelikeChessAppSwing extends JFrame {
             msg.append("Gold earned: ").append(s.payout.total).append("\n");
         }
         msg.append("Gold: ").append(s.goldAfter);
+        if (!s.cardsUsedUp.isEmpty()) {
+            msg.append("\nCards used up: ").append(String.join(", ", s.cardsUsedUp));
+        }
 
         if (s.result == GameResult.BLACK_WINS) AudioPlayer.playCheckmateSound();
         JOptionPane.showMessageDialog(this, msg.toString(), title,

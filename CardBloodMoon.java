@@ -15,7 +15,7 @@ public class CardBloodMoon extends Card {
     }
 
     @Override
-    public void onGameStart(GameState state) {
+    public void onPlay(GameState state) {
         int transformed = 0;
         for (int r = 0; r < 8; r++) {
             for (int c = 0; c < 8; c++) {
