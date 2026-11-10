@@ -33,7 +33,7 @@ OPPONENTS = [
     {"name": "opponent2", "mood": "smile", "seed": 21, "build": {"weight": 0.35, "height": 0.85, "muscle": 0.4},
      "cloak": ("velour_velvet", (0.2, 0.035, 0.04), 3.0, 0.35), "skirt": ("rough_linen", (0.05, 0.045, 0.045), 4.0, 0.04)},
     {"name": "opponent3", "mood": "sad", "seed": 33, "build": {"weight": 0.85, "muscle": 0.6, "height": 0.5},
-     "cloak": ("hessian_230", (0.5, 0.42, 0.3), 2.0, 0.0), "skirt": ("knitted_fleece", (0.06, 0.05, 0.045), 6.0, 0.03)},
+     "cloak": ("hessian_230", (0.5, 0.42, 0.3), 6.0, 0.0), "skirt": ("knitted_fleece", (0.06, 0.05, 0.045), 6.0, 0.03)},
     {"name": "opponent4", "mood": "smile", "seed": 44, "build": {"height": 0.75, "age": 0.85, "weight": 0.4},
      "cloak": ("rough_linen", (0.05, 0.06, 0.085), 3.0, 0.04), "skirt": ("poly_wool_herringbone", (0.08, 0.08, 0.09), 4.0, 0.04)},
     {"name": "opponent5", "mood": "sad", "seed": 57, "build": {"gender": 0.0, "height": 0.55, "weight": 0.4},
@@ -43,7 +43,7 @@ DEALERS = [
     {"name": "card_dealer", "mood": "smile", "seed": 2, "pose": "offering", "build": {"height": 0.65},
      "cloak": ("caban", (0.07, 0.06, 0.055), 2.5, 0.04), "skirt": ("poly_wool_herringbone", (0.1, 0.09, 0.08), 4.0, 0.04)},
     {"name": "piece_dealer", "mood": "sad", "seed": 7, "pose": "clasped", "build": {"height": 0.7, "weight": 0.6},
-     "cloak": ("hessian_230", (0.22, 0.18, 0.13), 2.0, 0.0), "skirt": ("knitted_fleece", (0.05, 0.045, 0.04), 6.0, 0.03)},
+     "cloak": ("hessian_230", (0.22, 0.18, 0.13), 6.0, 0.0), "skirt": ("knitted_fleece", (0.05, 0.045, 0.04), 6.0, 0.03)},
     {"name": "reseller", "mood": "smile", "seed": 11, "pose": "clasped", "build": {"height": 0.3, "weight": 0.65},
      "cloak": ("velour_velvet", (0.07, 0.05, 0.09), 3.0, 0.3), "skirt": ("rough_linen", (0.06, 0.055, 0.05), 4.0, 0.04)},
 ]
@@ -80,7 +80,8 @@ def main():
     bpy.context.view_layer.update()
     lo, hi = kit.bounds(table_objs)
     seat = realistic.seat_height(chair_objs, (0, CHAIR_Y))
-    props = [o for o in table_objs + chair_objs if o.type == "MESH"]
+    proxies = realistic.chair_proxy(CHAIR_Y, seat)     # the cloth sits on these, not on the real chair
+    props = [o for o in table_objs if o.type == "MESH"] + proxies
 
     for spec in OPPONENTS + DEALERS:
         name = spec["name"]
@@ -102,6 +103,8 @@ def main():
     for root in (table, chair):
         for o in [root] + list(root.children_recursive):
             bpy.data.objects.remove(o, do_unlink=True)
+    for o in proxies:
+        bpy.data.objects.remove(o, do_unlink=True)
     sc.frame_set(1)
     bpy.ops.wm.save_as_mainfile(filepath=OUT)
     print("SAVED", OUT, "in %.0f s" % (time.time() - t0))

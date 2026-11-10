@@ -125,7 +125,8 @@ def build_set():
     bpy.context.view_layer.update()
     top = kit.bounds(table_objs)[1].z
     kit.import_model("chess_set", Vector((0, 0, 0)), rot_z=math.pi, sit_on=top)
-    kit.import_model("WoodenChair_01", Vector((OPPONENT.x, OPPONENT.y + 0.1, 0)), sit_on=0.0)
+    chair, _ = kit.import_model("WoodenChair_01", Vector((OPPONENT.x, OPPONENT.y + 0.1, 0)), sit_on=0.0)
+    chair.scale.x *= realistic.CHAIR_WIDEN   # a wider throne, so robed arms fit between its rails
     kit.import_model("hanging_industrial_lamp", Vector((0, 0, 0)), scale=0.45, sit_on=1.95)
     LIGHTS["lamp"] = kit.light("SPOT", (0, 0, 1.93), 650, (1.0, 0.8, 0.6), size=0.08, target=(0, 0, 0), spot_deg=85, blend=0.6)
     LIGHTS["bulb"] = kit.light("POINT", (0, 0, 1.98), 25, (1.0, 0.7, 0.4), size=0.05)
@@ -390,7 +391,7 @@ def render_all(cam, views):
         rig = RIGS[name]
         for r in DEALER_REACTIONS:
             realistic.react(rig, r)
-            render_clip("%s_%s" % (name, r), max(2, realistic.REACTION_FRAMES // q))
+            render_clip("%s_%s" % (name, r), max(2, realistic.reaction_frames(r) // q))
         realistic.react(rig, None)
 
     # Each opponent's close-up: idle and reactions, at half resolution.
@@ -404,7 +405,7 @@ def render_all(cam, views):
         render_clip(view + "_idle", max(2, realistic.IDLE_FRAMES // q), half=True)
         for r in OPPONENT_REACTIONS:
             realistic.react(rig, r)
-            render_clip("%s_%s" % (view, r), max(2, realistic.REACTION_FRAMES // q), half=True)
+            render_clip("%s_%s" % (view, r), max(2, realistic.reaction_frames(r) // q), half=True)
         realistic.react(rig, None)
     show_opponent(1)
     cam.data.lens = 28
@@ -414,7 +415,7 @@ def render_all(cam, views):
         clear_keys(cam)
         (la, ra, fa), (lb, rb, fb) = views[a], views[b]
         rb = (rb[0], rb[1], unwrap(ra[2], rb[2]))
-        n = max(2, 18 // q)
+        n = max(2, 24 // q)   # one second, easing out of one view and into the next
         key(cam, 1, la, ra, fa)
         key(cam, n, lb, rb, fb)
         render_clip("turn_%s_%s" % (a, b), n)
@@ -553,6 +554,10 @@ def main():
         kit.setup_eevee(sc)
     else:
         kit.setup_cycles(sc, threshold=0.05, max_samples=128)
+        # Motion blur (a half-open shutter, as a film camera has): moving things smear slightly
+        # within each frame, which is most of what makes rendered motion look smooth.
+        sc.render.use_motion_blur = True
+        sc.render.motion_blur_shutter = 0.5
     cam = make_camera()
     render_all(cam, build_views(top))
     print("DONE", OUT)

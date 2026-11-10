@@ -42,8 +42,9 @@ else:
     bpy.context.view_layer.update()
     lo, hi = kit.bounds(table_objs)
     chair, chair_objs = kit.import_model("WoodenChair_01", Vector((0, 0.1, 0)), sit_on=0.0)
-    colliders = [o for o in table_objs + chair_objs if o.type == "MESH"]
+    chair.scale.x *= realistic.CHAIR_WIDEN
     seat = realistic.seat_height(chair_objs, (0, 0.1))
+    colliders = [o for o in table_objs if o.type == "MESH"] + realistic.chair_proxy(0.1, seat)
     print("SEAT", seat)
     spec = {"pose": "seated", "mood": "sad", "seed": 5, "table_top": hi.z, "table_near_y": hi.y, "chair_y": 0.1,
             "seat_z": seat,

@@ -37,6 +37,7 @@ import scene_kit as kit
 SIM_POSE_FRAME = 40   # the body reaches its pose here...
 SIM_END = 72          # ...and the cloth has settled by here
 FINGERS = ("index", "middle", "ring", "pinky")
+CHAIR_WIDEN = 1.3     # the opponent's chair is made this much wider (scenes and tests apply it)
 
 
 def _mpfb():
@@ -51,9 +52,10 @@ def _update():
 
 
 # ─── MATERIALS ───────────────────────────────────────────────────────────────
-def fabric(name, tex_id, tint=(1, 1, 1), scale=3.0, sheen=0.04, bump=1.0, rough_boost=0.0):
+def fabric(name, tex_id, tint=(1, 1, 1), scale=3.0, sheen=0.04, bump=1.0, rough_boost=0.0, worn=True):
     """A Poly Haven fabric (colour, roughness, normal) tinted by multiplying, tiled every 1/scale metres
-    of UV (garments here have UVs in metres)."""
+    of UV (garments here have UVs in metres). worn: uneven fading across the cloth, dust gathering
+    toward the floor, and fine fibre bumps, so it never looks like one flat colour."""
     folder = os.path.join(kit.ASSETS, "textures", tex_id)
     m = bpy.data.materials.new(name)
     m.use_nodes = True
@@ -82,7 +84,46 @@ def fabric(name, tex_id, tint=(1, 1, 1), scale=3.0, sheen=0.04, bump=1.0, rough_
     L.new(tex("diff", True).outputs["Color"], grey.inputs["Color"])
     L.new(grey.outputs["Color"], tint_mix.inputs[6])
     tint_mix.inputs[7].default_value = (*tint, 1)
-    L.new(tint_mix.outputs[2], bsdf.inputs["Base Color"])
+    colour_out = tint_mix.outputs[2]
+    if worn:
+        obj_co = uv.outputs["Object"]
+        # Uneven fading: broad patches a little lighter or darker.
+        patches = N.new("ShaderNodeTexNoise")
+        patches.inputs["Scale"].default_value = 2.2
+        patches.inputs["Detail"].default_value = 5.0
+        L.new(obj_co, patches.inputs["Vector"])
+        shade = N.new("ShaderNodeMapRange")
+        shade.inputs[1].default_value, shade.inputs[2].default_value = 0.3, 0.7
+        shade.inputs[3].default_value, shade.inputs[4].default_value = 0.6, 1.25
+        L.new(patches.outputs["Fac"], shade.inputs[0])
+        faded = N.new("ShaderNodeMix")
+        faded.data_type, faded.blend_type = "RGBA", "MULTIPLY"
+        faded.inputs[0].default_value = 1.0
+        L.new(colour_out, faded.inputs[6])
+        L.new(shade.outputs[0], faded.inputs[7])
+        # Dust: the hem (near the floor) picks up pale grey dirt, in streaks.
+        height = N.new("ShaderNodeSeparateXYZ")
+        L.new(N.new("ShaderNodeNewGeometry").outputs["Position"], height.inputs[0])
+        low = N.new("ShaderNodeMapRange")
+        low.inputs[1].default_value, low.inputs[2].default_value = 0.0, 0.45
+        low.inputs[3].default_value, low.inputs[4].default_value = 0.55, 0.0
+        L.new(height.outputs["Z"], low.inputs[0])
+        streaks = N.new("ShaderNodeTexNoise")
+        streaks.inputs["Scale"].default_value = 9.0
+        streaks.inputs["Detail"].default_value = 6.0
+        L.new(obj_co, streaks.inputs["Vector"])
+        dust_amount = N.new("ShaderNodeMath")
+        dust_amount.operation = "MULTIPLY"
+        dust_amount.use_clamp = True
+        L.new(low.outputs[0], dust_amount.inputs[0])
+        L.new(streaks.outputs["Fac"], dust_amount.inputs[1])
+        dusty = N.new("ShaderNodeMix")
+        dusty.data_type = "RGBA"
+        L.new(dust_amount.outputs[0], dusty.inputs[0])
+        L.new(faded.outputs[2], dusty.inputs[6])
+        dusty.inputs[7].default_value = (0.2, 0.17, 0.14, 1)
+        colour_out = dusty.outputs[2]
+    L.new(colour_out, bsdf.inputs["Base Color"])
     rough = tex("rough", False)
     if rough_boost:
         add = N.new("ShaderNodeMath")
@@ -96,7 +137,19 @@ def fabric(name, tex_id, tint=(1, 1, 1), scale=3.0, sheen=0.04, bump=1.0, rough_
     nmap = N.new("ShaderNodeNormalMap")
     nmap.inputs["Strength"].default_value = bump
     L.new(tex("nor_gl", False).outputs["Color"], nmap.inputs["Color"])
-    L.new(nmap.outputs["Normal"], bsdf.inputs["Normal"])
+    normal_out = nmap.outputs["Normal"]
+    if worn:
+        fibres = N.new("ShaderNodeTexNoise")
+        fibres.inputs["Scale"].default_value = 140.0
+        fibres.inputs["Detail"].default_value = 3.0
+        L.new(uv.outputs["Object"], fibres.inputs["Vector"])
+        fuzz = N.new("ShaderNodeBump")
+        fuzz.inputs["Strength"].default_value = 0.12
+        fuzz.inputs["Distance"].default_value = 0.002
+        L.new(fibres.outputs["Fac"], fuzz.inputs["Height"])
+        L.new(normal_out, fuzz.inputs["Normal"])
+        normal_out = fuzz.outputs["Normal"]
+    L.new(normal_out, bsdf.inputs["Normal"])
     if sheen:
         bsdf.inputs["Sheen Weight"].default_value = sheen
         bsdf.inputs["Sheen Roughness"].default_value = 0.6
@@ -107,8 +160,9 @@ def fabric(name, tex_id, tint=(1, 1, 1), scale=3.0, sheen=0.04, bump=1.0, rough_
 def default_materials():
     """Shared materials: knitted tunic, leather gloves and the void inside the hood."""
     return {
-        "tunic": fabric("tunic", "knitted_fleece", (0.07, 0.064, 0.058), scale=7.0, sheen=0.03, bump=1.6),
-        "glove": fabric("glove", "fabric_leather_02", (0.06, 0.05, 0.045), scale=8.0, sheen=0.0, rough_boost=0.08),
+        "tunic": fabric("tunic", "knitted_fleece", (0.07, 0.064, 0.058), scale=7.0, sheen=0.03, bump=1.6, worn=False),
+        "glove": fabric("glove", "fabric_leather_02", (0.06, 0.05, 0.045), scale=8.0, sheen=0.0, rough_boost=0.08,
+                        worn=False),
         "lining": _lining(),
     }
 
@@ -257,7 +311,7 @@ def pose_seated_table(rig, table_top, table_near_y, chair_y, seat_z=0.46):
         aim(rig, bone, d)
     for s, x in (("r", -1), ("l", 1)):
         wrist = (0.19 * x, table_near_y - 0.06, table_top + 0.035)
-        reach(rig, "upperarm_" + s, "lowerarm_" + s, wrist, (x, 0.5, -1.0))
+        reach(rig, "upperarm_" + s, "lowerarm_" + s, wrist, (0.25 * x, 0.7, -1.0))   # elbows in, by the ribs
         aim(rig, "hand_" + s, (-0.18 * x, -1, -0.04))
     curl(rig, -0.12, thumb=0.0)            # MPFB's rest hand is already curled: straighten it
 
@@ -282,19 +336,46 @@ def _snapshot(rig):
     return {pb.name: (pb.rotation_quaternion.copy(), pb.location.copy()) for pb in rig.pose.bones}
 
 
-def _apply(rig, snap, t=1.0):
+def _apply(rig, snap, t=1.0, start=None):
+    """Poses the rig t of the way from start (default: the rest pose) to snap."""
     for pb in rig.pose.bones:
         q, loc = snap[pb.name]
-        pb.rotation_quaternion = Quaternion().slerp(q, t)
-        pb.location = loc * t
+        q0, loc0 = start[pb.name] if start else (Quaternion(), Vector((0, 0, 0)))
+        pb.rotation_quaternion = q0.slerp(q, t)
+        pb.location = loc0.lerp(loc, t)
 
 
-def _key_pose_move(rig, snap):
-    """Animates rest (frame 1..8) -> pose (SIM_POSE_FRAME) and holds it."""
+def _reset(rig):
+    for pb in rig.pose.bones:
+        pb.rotation_quaternion = Quaternion()
+        pb.location = (0, 0, 0)
+    _update()
+
+
+def pose_arms_down(rig):
+    """Arms hanging by the sides: the pose the clothes are put on in (so the cloak can be narrow)."""
+    for s, x in (("r", -1), ("l", 1)):
+        aim(rig, "upperarm_" + s, (0.1 * x, 0.02, -1))
+        aim(rig, "lowerarm_" + s, (0.04 * x, -0.12, -1))
+
+
+def chair_proxy(chair_y, seat_z, half_width=0.36):
+    """Simple stand-ins for a chair in the cloth simulation: a seat and a back, no arm rails
+    (cloth piling up on arm rails makes huge square shoulders). Returns the two objects."""
+    seat = kit.box((0, chair_y, seat_z - 0.03), (2 * half_width, 0.6, 0.06), None)
+    back = kit.box((0, chair_y + 0.33, seat_z + 0.6), (2 * half_width, 0.05, 1.3), None)
+    for o in (seat, back):
+        o.data.materials.clear()
+        o.hide_render = True
+    return [seat, back]
+
+
+def _key_pose_move(rig, snap, start):
+    """Animates start (frame 1..8) -> pose (SIM_POSE_FRAME) and holds it."""
     rig.animation_data_create()
     rig.animation_data.action = bpy.data.actions.new(rig.name + "_dress")
     for frame, t in ((1, 0.0), (8, 0.0), (SIM_POSE_FRAME, 1.0), (SIM_END + 5, 1.0)):
-        _apply(rig, snap, t)
+        _apply(rig, snap, t, start)
         for pb in rig.pose.bones:
             pb.keyframe_insert("rotation_quaternion", frame=frame)
             pb.keyframe_insert("location", frame=frame)
@@ -328,7 +409,7 @@ def _ring_mesh(bm, uv, rings, segments, gap=0.0, front_angle=-math.pi / 2, flare
     return rows
 
 
-def _sleeve(bm, uv, rig, side, code, pin, arm_t, segments=20, rings=16):
+def _sleeve(bm, uv, rig, side, code, pin, arm_t, segments=28, rings=24):
     """A loose sleeve around one rest arm, from just past the shoulder to a wide cuff at the wrist."""
     up, low = rig.data.bones["upperarm_" + side], rig.data.bones["lowerarm_" + side]
     shoulder, elbow, wrist = up.head_local, up.tail_local, low.tail_local
@@ -385,7 +466,7 @@ def make_garment(name, rig, body, mats, cloak_mat, skirt_mat, head_centre, face_
     # Under-robe: from the chest (just under the arms) to the floor, wide enough to sit in.
     chest_z = rig.data.bones["spine_03"].tail_local.z - 0.03
     skirt_rings = []
-    n_sk = 38
+    n_sk = 60
     for k in range(n_sk + 1):
         t = k / n_sk
         z = chest_z + (0.03 - chest_z) * t
@@ -397,7 +478,7 @@ def make_garment(name, rig, body, mats, cloak_mat, skirt_mat, head_centre, face_
             rx = 0.2 + 0.2 * u ** 0.8
             ry = rx * 0.85
         skirt_rings.append((z, rx, ry, (0.0, 0.0)))
-    skirt_rows = _ring_mesh(bm, uv, skirt_rings, 56)
+    skirt_rows = _ring_mesh(bm, uv, skirt_rings, 96)
     # A yoke: the front and back rise to the base of the neck (the sides stay under the arms).
     lift_max = neck_z - 0.05 - chest_z
     for row in skirt_rows:
@@ -416,37 +497,48 @@ def make_garment(name, rig, body, mats, cloak_mat, skirt_mat, head_centre, face_
         _sleeve(bm, uv, rig, side, code, pin, arm_t)
     skirt_faces = set(bm.faces)
 
-    # Cloak: from a close collar, flaring out over the A-posed arms, open at the front.
-    # It only has to clear the A-posed arms (hands at about neck - 0.45); below that it slims down.
-    prof = [(neck_z - 0.01, 0.085, 0.08), (neck_z - 0.05, 0.15, 0.12), (neck_z - 0.1, 0.25, 0.17),
-            (neck_z - 0.18, 0.37, 0.22), (neck_z - 0.3, 0.5, 0.3), (neck_z - 0.45, 0.6, 0.35),
-            (neck_z - 0.6, 0.52, 0.34)]
+    # Cloak: from a close collar, over the shoulders and the arms (hanging down as it is put on),
+    # open at the front.
+    prof = [(neck_z - 0.01, 0.085, 0.08), (neck_z - 0.05, 0.15, 0.12), (neck_z - 0.1, 0.24, 0.17),
+            (neck_z - 0.18, 0.31, 0.21), (neck_z - 0.3, 0.35, 0.25), (neck_z - 0.45, 0.39, 0.28),
+            (neck_z - 0.6, 0.42, 0.3)]
     bottom = length
     z0 = prof[-1][0]
     steps = 14
     for k in range(1, steps + 1):
-        prof.append((z0 + (bottom - z0) * k / steps, 0.52 - 0.06 * k / steps, 0.34))
+        prof.append((z0 + (bottom - z0) * k / steps, 0.42 + 0.04 * k / steps, 0.3 + 0.03 * k / steps))
+    # Fine rings (every 2.5 cm) so the cloth can form real folds.
+    fine = []
+    z = prof[0][0]
+    while z > bottom:
+        k = max(i for i in range(len(prof) - 1) if prof[i][0] >= z)
+        (za, xa, ya), (zb, xb, yb) = prof[k], prof[k + 1]
+        t = (za - z) / (za - zb)
+        fine.append((z, xa + (xb - xa) * t, ya + (yb - ya) * t))
+        z -= 0.025
+    prof = fine + [prof[-1]]
     # A V-shaped opening: narrow at the collar, wide from the hands down, so the arms come out through it.
     gaps = []
     for z, _, _ in prof:
-        t = max(0.0, min(1.0, (neck_z - 0.02 - z) / 0.5))
-        gaps.append(math.radians(26 + 84 * t ** 0.8))
-    cloak_rows = _ring_mesh(bm, uv, [(z, rx, ry, c) for z, rx, ry in prof], 72, gap=gaps)
-    for v in cloak_rows[0]:
-        v[pin] = 1.0
-    for v in cloak_rows[1]:
-        v[pin] = 0.6
+        t = max(0.0, min(1.0, (neck_z - 0.2 - z) / 0.35))   # closed over the chest, opening below it
+        gaps.append(math.radians(16 + 94 * t ** 0.8))
+    cloak_rows = _ring_mesh(bm, uv, [(z, rx, ry, c) for z, rx, ry in prof], 112, gap=gaps)
+    for row in cloak_rows:                       # the collar holds on to the neck
+        z_row = row[0].co.z
+        hold = 1.0 if z_row > neck_z - 0.03 else 0.6 if z_row > neck_z - 0.065 else 0.0
+        for v in row:
+            v[pin] = hold
 
     # Hood: a deep dome around the head, joined (welded later) to the collar, with an oval face
     # opening in front and a slight peak at the back of the crown.
     hx, hy, hz = head_centre
     hood_rows = []
-    n_ang = 40
+    n_ang = 56
     half_open = math.radians(40)                             # the face opening, either side of the front
     # (z, radius, dome angle) per row: straight sides from the collar up to the head's middle, then a dome.
-    levels = [(neck_z - 0.03 + (hz - neck_z + 0.03) * k / 6, 0.157, 0.0) for k in range(6)]
+    levels = [(neck_z - 0.03 + (hz - neck_z + 0.03) * k / 9, 0.157, 0.0) for k in range(9)]
     levels += [(hz + 0.17 * math.sin(p), 0.145 * math.cos(p) + 0.012, p)
-               for p in (math.pi / 2 * k / 11 for k in range(11))]
+               for p in (math.pi / 2 * k / 16 for k in range(16))]
     n_up = len(levels) - 1
     for z_l, r_h, phi in levels:
         row = []
@@ -465,8 +557,9 @@ def make_garment(name, rig, body, mats, cloak_mat, skirt_mat, head_centre, face_
     for r in range(n_up):
         for i in range(n_ang):
             f = bm.faces.new((hood_rows[r][i], hood_rows[r][i + 1], hood_rows[r + 1][i + 1], hood_rows[r + 1][i]))
-            for loop in f.loops:
-                loop[uv].uv = (i / n_ang * 0.9, r / n_up * 0.5 + 2.0)
+            for loop in f.loops:      # metres around the head and up it, like the cloak
+                co = loop.vert.co
+                loop[uv].uv = (math.atan2(co.y - hy, co.x - hx) * 0.16, co.z)
     for i in range(n_ang):
         bm.faces.new((hood_rows[-1][i], hood_rows[-1][i + 1], top))
     for row in hood_rows:
@@ -534,7 +627,7 @@ def make_garment(name, rig, body, mats, cloak_mat, skirt_mat, head_centre, face_
 
     cloth = obj.modifiers.new("cloth", "CLOTH")
     st = cloth.settings
-    st.quality = 12
+    st.quality = 10
     st.mass = 0.35
     st.air_damping = 1.0
     st.tension_stiffness = st.compression_stiffness = 20
@@ -605,7 +698,7 @@ def follow_body(obj, body):
     if not mod.is_bound:
         raise RuntimeError("could not bind %s to %s" % (obj.name, body.name))
     thick = obj.modifiers.new("thickness", "SOLIDIFY")
-    thick.thickness = 0.004
+    thick.thickness = 0.005
     thick.offset = 1.0
     sub = obj.modifiers.new("smooth", "SUBSURF")
     sub.levels, sub.render_levels = 0, 1
@@ -639,15 +732,18 @@ def build_character(name, spec, colliders=(), mats=None):
                            length=spec.get("cloak_length", 0.33))
     add_collider(body)
     for o in colliders:
-        add_collider(o, 0.025)         # thick enough that chair finials never poke through the cloak
+        add_collider(o, 0.012)
 
-    # Work out the pose, then animate into it while the cloth falls.
+    # Work out the pose, then animate into it (from arms hanging down) while the cloth falls.
+    pose_arms_down(rig)
+    start = _snapshot(rig)
+    _reset(rig)
     if spec["pose"] == "seated":
         pose_seated_table(rig, spec["table_top"], spec["table_near_y"], spec["chair_y"], spec.get("seat_z", 0.46))
     else:
         pose_standing(rig, spec["pose"])
     snap = _snapshot(rig)
-    _key_pose_move(rig, snap)
+    _key_pose_move(rig, snap, start)
     simulate(sc)
 
     sc.frame_set(SIM_END)
@@ -691,11 +787,20 @@ def place(rig, pos, facing):
 
 
 # ─── ANIMATION ───────────────────────────────────────────────────────────────
-# The same idle and reactions as the old characters (characters.REACTIONS), mapped onto the
-# game-engine skeleton. Offsets are added on top of the saved pose, in each bone's own frame:
-# +x bows forward, y turns the head, z tilts it.
-IDLE_FRAMES = 48
+# An idle loop and reactions (the moves in characters.REACTIONS) on the game-engine skeleton.
+# Offsets are added on top of the saved pose, in each bone's own frame: +x bows forward,
+# y turns, z tilts sideways.
+#
+# The idle is one slow breath (4 seconds) with slower and faster drifts layered on it, all whole
+# numbers of cycles per loop so it repeats without a seam. Reactions are the idle plus a move that
+# starts and ends at rest; the head follows the chest a beat late, as a real body does.
+IDLE_FRAMES = 96
 REACTION_FRAMES = 48
+LOOPED_REACTIONS = {"think"}   # these are looped by the game, so they last one whole idle loop
+
+
+def reaction_frames(name):
+    return IDLE_FRAMES if name in LOOPED_REACTIONS else REACTION_FRAMES
 OFFSET_BONES = {"spine": ("spine_01", "spine_02"), "chest": ("spine_03",), "neck": ("neck_01",), "head": ("head",)}
 
 
@@ -707,12 +812,19 @@ def _idle_offsets(f, seed, energy):
     t = 2 * math.pi * f / IDLE_FRAMES
     ph = seed * 0.7
     d = math.radians
+    e = energy
+    s = math.sin
     return {
-        "spine": [0.0, d(0.8 * energy) * math.sin(t + ph), 0.0],
-        "chest": [d(1.6 * energy) * math.sin(t), 0.0, 0.0],
-        "neck": [0.0, 0.0, 0.0],
-        "head": [d(2.5 * energy) * math.sin(t + 1.0 + ph), d(3.0 * energy) * math.sin(t + ph),
-                 d(2.0 * energy) * math.sin(t + 2.0)],
+        # A slow shift of weight: a slight turn and a slight lean to one side.
+        "spine": [0.0, d(0.6 * e) * s(t + ph), d(0.5 * e) * s(t + ph + 1.3)],
+        # Breathing: the chest rocks back as it fills...
+        "chest": [d(-1.1 * e) * s(t), 0.0, 0.0],
+        # ...and the neck gives a little the other way, so the head stays level.
+        "neck": [d(0.5 * e) * s(t), 0.0, 0.0],
+        # The head drifts: a slow nod and turn with smaller, quicker wanderings on top.
+        "head": [d(1.1 * e) * s(t + 1.0 + ph) + d(0.5 * e) * s(2 * t + 2 * ph),
+                 d(1.8 * e) * s(t + ph) + d(0.7 * e) * s(3 * t + ph),
+                 d(0.9 * e) * s(2 * t + 2.0 + ph)],
     }
 
 
@@ -722,7 +834,7 @@ def _pose_offsets(rig, base, offsets, breath):
         share = 1.0 / len(bones)
         for b in bones:
             rig.pose.bones[b].rotation_quaternion = base[b] @ Euler((x * share, y * share, z * share)).to_quaternion()
-    rig.pose.bones["spine_03"].scale = (1 + 0.012 * breath,) * 3
+    rig.pose.bones["spine_03"].scale = (1 + 0.014 * breath,) * 3
 
 
 def _assign(rig, action):
@@ -742,7 +854,11 @@ def bake(rig, action_name, frames, extra_fn=None, step=2, cyclic=False):
     for f in range(0, frames + 1, step):
         offs = _idle_offsets(f % IDLE_FRAMES, seed, energy)
         if extra_fn:
-            for k, v in extra_fn(f / frames).items():
+            u = f / frames
+            late = u ** 1.18                      # the head and neck trail the body slightly
+            lead, lag = extra_fn(u), extra_fn(late)
+            for k in lead:
+                v = lag[k] if k in ("head", "neck") else lead[k]
                 offs[k] = [a + b for a, b in zip(offs[k], v)]
         _pose_offsets(rig, base, offs, (1 + math.sin(2 * math.pi * (f % IDLE_FRAMES) / IDLE_FRAMES)) / 2)
         for b in keyed:
@@ -766,7 +882,7 @@ def _fcurves(action):
 
 
 def animate(rig, seed, energy=1.0):
-    """Gives the rig its breathing idle (a seamless 48-frame loop)."""
+    """Gives the rig its breathing idle (a seamless loop of IDLE_FRAMES)."""
     rig["seed"], rig["energy"] = seed, energy
     rig["idle_action"] = bake(rig, rig.name + "_idle", IDLE_FRAMES, step=4, cyclic=True).name
 
@@ -780,7 +896,7 @@ def react(rig, name):
     key = "%s_%s" % (rig.name, name)
     scale = rig.get("react_scale", 0.75)   # life-size bodies need smaller moves than the old figures
     fn = characters.REACTIONS[name]
-    action = bpy.data.actions.get(key) or bake(rig, key, REACTION_FRAMES,
+    action = bpy.data.actions.get(key) or bake(rig, key, reaction_frames(name),
                                                lambda u: {k: [c * scale for c in v] for k, v in fn(u).items()})
     _assign(rig, action)
 
