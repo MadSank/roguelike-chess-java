@@ -8,6 +8,8 @@ Options after "--":
     --draft           EEVEE at half resolution: fast previews (minutes instead of an hour)
     --quick           a quarter of the frames per clip
     --only NAME,...   render only these clips (e.g. --only table,card,intro)
+    --resume          skip clips a previous full render already finished (it leaves a "done" file in
+                      each clip's folder), so an interrupted render carries on where it stopped
 
 Output: resources/scenes/<clip>/frame_0001.jpg ... at 1280x720 (ignored by git).
 Clips: still views table / card / piece / resell, the turns between neighbouring views, the intro,
@@ -40,6 +42,7 @@ OUT = os.path.join(ROOT, "resources", "scenes")
 args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 DRAFT = "--draft" in args
 QUICK = "--quick" in args
+RESUME = "--resume" in args
 ONLY = set(args[args.index("--only") + 1].split(",")) if "--only" in args else None
 WIDTH, HEIGHT = (640, 360) if DRAFT else (1280, 720)
 FPS = 24
@@ -368,12 +371,18 @@ def render_clip(name, frames, half=False):
     sc.render.resolution_percentage = 50 if half else 100
     folder = os.path.join(OUT, name)
     os.makedirs(folder, exist_ok=True)
+    marker = os.path.join(folder, "done")
+    if RESUME and os.path.exists(marker):
+        print("SKIPPED", name, "(already rendered)")
+        return
     for f in os.listdir(folder):
-        if f.endswith(".jpg"):
+        if f.endswith(".jpg") or f == "done":
             os.remove(os.path.join(folder, f))
     sc.frame_start, sc.frame_end = 1, frames
     sc.render.filepath = os.path.join(folder, "frame_")
     bpy.ops.render.render(animation=True)
+    if not (DRAFT or QUICK):
+        open(marker, "w").close()
     print("RENDERED", name, frames, "frames")
 
 
