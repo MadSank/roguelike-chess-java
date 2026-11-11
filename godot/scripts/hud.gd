@@ -25,6 +25,7 @@ var _status: Label
 var _hand: VBoxContainer
 var _toasts: VBoxContainer
 var _overlay: Control           # the menu, summary or shop panel currently open (or null)
+var overlay_kind := ""          ## which panel is open: "menu", "summary", "shop" or ""
 
 
 func _ready() -> void:
@@ -127,6 +128,7 @@ func _open(content: Control, width: float = 0.0) -> void:
 
 
 func close_overlay() -> void:
+	overlay_kind = ""
 	if _overlay != null:
 		_overlay.queue_free()
 		_overlay = null
@@ -232,6 +234,7 @@ func show_menu(best_level: int) -> void:
 	leave.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	v.add_child(leave)
 	_open(v)
+	overlay_kind = "menu"
 
 
 func show_summary(s: Dictionary) -> void:
@@ -275,6 +278,7 @@ func show_summary(s: Dictionary) -> void:
 	b.size_flags_horizontal = Control.SIZE_SHRINK_END
 	v.add_child(b)
 	_open(p, 560)
+	overlay_kind = "summary"
 
 
 func show_shop(state: Dictionary) -> void:
@@ -355,3 +359,4 @@ func show_shop(state: Dictionary) -> void:
 	foot.add_child(sit)
 	v.add_child(foot)
 	_open(p)
+	overlay_kind = "shop"

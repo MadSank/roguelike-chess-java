@@ -5,7 +5,7 @@ Exports people from characters.blend as ordinary game models for the Godot proje
     "C:\\Program Files\\Blender Foundation\\Blender 5.2\\blender.exe" -b --factory-startup -P tools\\blender\\export_people.py -- opponent1[,opponent2,...]
 
 Each becomes one skeleton with skinned meshes, plain image-textured materials and a baked, looping
-"idle" animation, seated as built: in Godot put it 1 m beyond the table (z = -1), unrotated.
+"idle" animation plus the reactions (think, capture, hurt, check, win, lose), seated as built: in Godot put it 1 m beyond the table (z = -1), unrotated.
 
 What has to change on the way out of Blender:
   - MPFB's helper geometry and shape keys go (modifiers can't be applied over shape keys)
@@ -27,6 +27,7 @@ import scene_kit as kit  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 OUT = os.path.join(ROOT, "godot", "assets")
+REACTIONS = ["think", "capture", "hurt", "check", "win", "lose"]
 HAIR_WORDS = ("hair", "brow", "lash", "short", "bob", "afro", "long", "ponytail", "braid")
 
 
@@ -231,14 +232,28 @@ def character(name):
         bpy.data.actions.remove(a)
     realistic.plant_hands(rig)
     realistic.animate(rig, rig["seed"], rig["energy"])
-    bpy.data.actions[rig["idle_action"]].name = "idle"
-    sc.frame_start, sc.frame_end = 1, realistic.IDLE_FRAMES
+    idle = bpy.data.actions[rig["idle_action"]]
+    # The reactions too (each is the idle plus a move; "think" lasts a whole idle loop so it can loop).
+    clips = [("idle", idle, realistic.IDLE_FRAMES)]
+    for reaction in REACTIONS:
+        realistic.react(rig, reaction)
+        clips.append((reaction, rig.animation_data.action, realistic.reaction_frames(reaction)))
+    rig.animation_data.action = None
+    for clip_name, action, frames in clips:      # one NLA track each: the exporter writes one animation per track
+        action.name = clip_name
+        for fc in realistic._fcurves(action):
+            for mod in list(fc.modifiers):
+                fc.modifiers.remove(mod)
+        track = rig.animation_data.nla_tracks.new()
+        track.name = clip_name
+        track.strips.new(clip_name, 1, action).action_frame_end = frames + (1 if clip_name != "idle" and clip_name != "think" else 0)
+    sc.frame_start, sc.frame_end = 1, realistic.IDLE_FRAMES + 1
 
     path = os.path.join(OUT, name + ".glb")
     bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", export_apply=True, export_yup=True,
                               export_lights=False, export_cameras=False, export_animations=True,
-                              export_force_sampling=True, export_frame_range=True, export_skins=True,
-                              export_morph=False)
+                              export_animation_mode="NLA_TRACKS", export_force_sampling=True,
+                              export_frame_range=False, export_skins=True, export_morph=False)
     print("EXPORTED", path, "%.1f MB" % (os.path.getsize(path) / 1e6),
           "verts", sum(len(o.data.vertices) for o in meshes))
 

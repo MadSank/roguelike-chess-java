@@ -28,6 +28,7 @@ TABLE_HEIGHT_SCALE = 0.76   # the table model is bar height; the cellar shortens
 CHAIR_Y = 0.1
 
 # name, mask, build (MPFB macros), cloak and robe fabrics: (Poly Haven texture, tint, tiles per metre, sheen)
+# MPFB's age scale: 0.19 is a child, 0.5 a young adult (about 25), 0.9 old. Never go below 0.5 here.
 # Each is a different person: build (MPFB macros), skin, hair (None = bald), hood ("up", "back", "down"),
 # bare or gloved hands, mask mood, and cloak / robe fabrics: (Poly Haven texture, tint, tiles per metre, sheen).
 CAUCASIAN = {"asian": 0.0, "caucasian": 1.0, "african": 0.0}
@@ -37,7 +38,7 @@ OPPONENTS = [
     {"name": "opponent1", "mood": "sad", "seed": 5, "build": {"race": CAUCASIAN},
      "skin": "middleage_caucasian_male", "hair": "short02", "hood": "back", "gloves": False,
      "cloak": ("caban", (0.1, 0.085, 0.075), 2.5, 0.04), "skirt": ("poly_wool_herringbone", (0.12, 0.1, 0.09), 4.0, 0.04)},
-    {"name": "opponent2", "mood": "smile", "seed": 21, "build": {"weight": 0.35, "height": 0.85, "muscle": 0.4, "age": 0.3, "race": ASIAN},
+    {"name": "opponent2", "mood": "smile", "seed": 21, "build": {"weight": 0.35, "height": 0.85, "muscle": 0.4, "age": 0.5, "race": ASIAN},
      "skin": "young_asian_male", "hair": "short04", "hood": "down", "gloves": True,
      "cloak": ("velour_velvet", (0.2, 0.035, 0.04), 3.0, 0.35), "skirt": ("rough_linen", (0.05, 0.045, 0.045), 4.0, 0.04)},
     {"name": "opponent3", "mood": "sad", "seed": 33, "build": {"weight": 0.85, "muscle": 0.6, "height": 0.5, "age": 0.9, "race": AFRICAN},
@@ -46,8 +47,8 @@ OPPONENTS = [
     {"name": "opponent4", "mood": "smile", "seed": 44, "build": {"height": 0.75, "age": 0.9, "weight": 0.4, "race": CAUCASIAN},
      "skin": "old_caucasian_male", "hair": "short01", "hood": "down", "gloves": False,
      "cloak": ("rough_linen", (0.05, 0.06, 0.085), 3.0, 0.04), "skirt": ("poly_wool_herringbone", (0.08, 0.08, 0.09), 4.0, 0.04)},
-    {"name": "opponent5", "mood": "sad", "seed": 57, "build": {"gender": 0.0, "height": 0.55, "weight": 0.4, "age": 0.3, "race": CAUCASIAN},
-     "skin": "young_caucasian_female", "hair": "bob01", "hood": "down", "gloves": True,
+    {"name": "opponent5", "mood": "sad", "seed": 57, "build": {"gender": 0.0, "height": 0.55, "weight": 0.4, "age": 0.5, "race": CAUCASIAN},
+     "skin": "young_caucasian_female", "hair": "ponytail01", "hood": "down", "gloves": True,
      "cloak": ("knitted_fleece", (0.03, 0.028, 0.03), 5.0, 0.03), "skirt": ("velour_velvet", (0.08, 0.02, 0.065), 3.0, 0.3)},
 ]
 DEALERS = [
@@ -119,8 +120,17 @@ def main():
             bpy.data.objects.remove(o, do_unlink=True)
     for o in proxies:
         bpy.data.objects.remove(o, do_unlink=True)
+    # Rebuilding only some: keep the others from the existing library.
+    if only and os.path.exists(OUT):
+        with bpy.data.libraries.load(OUT, link=False) as (src, dst):
+            dst.collections = [c for c in src.collections if c not in only]
+        for col in dst.collections:
+            sc.collection.children.link(col)
+            print("KEPT", col.name)
     sc.frame_set(1)
-    bpy.ops.wm.save_as_mainfile(filepath=OUT)
+    # Save beside the library and swap it in (Blender won't overwrite a file it has just loaded from).
+    bpy.ops.wm.save_as_mainfile(filepath=OUT + ".new.blend", copy=True)
+    os.replace(OUT + ".new.blend", OUT)
     print("SAVED", OUT, "in %.0f s" % (time.time() - t0))
 
 

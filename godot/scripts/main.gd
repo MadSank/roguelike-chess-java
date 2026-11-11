@@ -18,6 +18,9 @@ var lamp: SpotLight3D
 var bulb: OmniLight3D
 var post: ShaderMaterial
 var opponent: Node3D
+var _anim: AnimationPlayer
+var _seated := 0
+var _thinking := false
 
 var _cam_pos := SEAT
 var _cam_look := LOOK_OPPONENT
@@ -48,7 +51,14 @@ func _ready() -> void:
 	if Rules.running():
 		Rules.send("state")
 	var args := OS.get_cmdline_user_args()
-	if args.has("--shot"):
+	if args.has("--auto"):
+		_auto_rounds = int(args[args.find("--auto") + 1])
+		var ticker := Timer.new()
+		ticker.wait_time = 0.25
+		ticker.timeout.connect(_auto_step)
+		add_child(ticker)
+		ticker.start()
+	elif args.has("--shot"):
 		_take_shot(args[args.find("--shot") + 1], args.has("--demo"))
 
 
@@ -62,6 +72,7 @@ func _build_world() -> void:
 		board_model.rotate_y(PI / 2)          # so a1 (your left corner) is a dark square
 
 	_seat_opponent(1)
+	_set_thinking(false)
 
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
@@ -128,6 +139,10 @@ func _build_world() -> void:
 
 ## Puts opponent n in the chair across the table (if that model has been exported), breathing.
 func _seat_opponent(n: int) -> void:
+	if n == _seated:
+		return
+	_seated = n
+	_anim = null
 	if opponent != null:
 		opponent.queue_free()
 		opponent = null
@@ -137,10 +152,34 @@ func _seat_opponent(n: int) -> void:
 	opponent = (load(path) as PackedScene).instantiate()
 	opponent.position = Vector3(0, 0, -1.0)
 	add_child(opponent)
-	var player := opponent.find_child("AnimationPlayer", true, false) as AnimationPlayer
-	if player != null and player.has_animation("idle"):
-		player.get_animation("idle").loop_mode = Animation.LOOP_LINEAR
-		player.play("idle")
+	_anim = opponent.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if _anim != null:
+		for loop in ["idle", "think"]:
+			if _anim.has_animation(loop):
+				_anim.get_animation(loop).loop_mode = Animation.LOOP_LINEAR
+		_anim.animation_finished.connect(func(_name): _settle())
+		_settle()
+
+
+## The loop he rests in: thinking while the rules work out his move, otherwise the idle.
+func _settle() -> void:
+	if _anim == null:
+		return
+	var loop := "think" if _thinking and _anim.has_animation("think") else "idle"
+	if _anim.has_animation(loop) and _anim.current_animation != loop:
+		_anim.play(loop, 0.5)
+
+
+## A one-off reaction (capture, hurt, check, win, lose); he settles back into his loop afterwards.
+func _react(reaction: String) -> void:
+	if _anim != null and _anim.has_animation(reaction):
+		_anim.play(reaction, 0.3)
+
+
+func _set_thinking(on: bool) -> void:
+	_thinking = on
+	if _anim != null and (_anim.current_animation == "idle" or _anim.current_animation == "think"):
+		_settle()
 
 
 func _point(at: Vector3, colour: Color, energy: float, reach: float, shadows: bool) -> OmniLight3D:
@@ -245,23 +284,36 @@ func _on_answer(command: String, state: Dictionary) -> void:
 		if hud.has_overlay():
 			hud.close_overlay()
 		_sit_back(false)
+		_seat_opponent(int(state.get("opponent", 1)))
 		var moved: Dictionary = {}
 		if word == "move" and state.get("ok", true):
 			moved = _pending_move
+			if moved.get("capture", false) and not state.get("roundOver", false):
+				_react("hurt")
 		elif word == "ai":
+			_set_thinking(false)
 			moved = state.get("aiMove", {})
+			if not state.get("roundOver", false):
+				if state.get("whiteInCheck", false):
+					_react("check")
+				elif moved.get("capture", false):
+					_react("capture")
 			if moved.get("capture", false) or state.get("whiteInCheck", false):
 				_glitch = 0.6
 		board.show_state(state, moved)
 		if state.get("roundOver", false):
 			board.enabled = false
 			hud.status("")
-			if not _summary_due:                       # let the last move land before the reckoning
+			if not _summary_due:                       # he reacts to the result, then the reckoning
 				_summary_due = true
-				get_tree().create_timer(1.4).timeout.connect(func(): Rules.send("finish"))
+				_sit_back(true)
+				var result: String = state.get("result", "")
+				_react("win" if result == "BLACK_WINS" else "lose" if result == "WHITE_WINS" else "")
+				get_tree().create_timer(2.2).timeout.connect(func(): Rules.send("finish"))
 		elif not state.get("whiteToMove", true):
 			board.enabled = false
 			hud.status("He is thinking...")
+			_set_thinking(true)
 			Rules.send("ai")
 		else:
 			board.enabled = true
@@ -302,6 +354,59 @@ func _on_sit_down() -> void:
 	Rules.send("sit " + ",".join(take))
 
 
+# ─── Playing by itself, for checking ─────────────────────────────────────────
+# godot --path godot -- --auto N [--shot out.png]: plays random legal moves and clicks through the
+# summary and the shop like a (bad) player until N rounds have finished, printing each step.
+var _auto_rounds := 0
+var _auto_done := 0
+var _auto_buys := 0
+
+
+func _auto_step() -> void:
+	if Rules.busy:
+		return
+	var state := Rules.state
+	var phase: String = state.get("phase", "MENU")
+	match hud.overlay_kind:
+		"menu":
+			print("AUTO new run")
+			hud.begin_run.emit("Auto")
+		"summary":
+			_auto_done += 1
+			print("AUTO round %d over: %s, gold %d" % [_auto_done, state["summary"].get("result", "?"), int(state.get("gold", 0))])
+			if _auto_done >= _auto_rounds:
+				_auto_rounds = 1 << 30                 # (stops this branch running again while we wait)
+				await get_tree().create_timer(0.6).timeout
+				_auto_finish()
+				return
+			hud.continue_pressed.emit()
+		"shop":
+			var shop: Dictionary = state.get("shop", {})
+			if shop.get("meets", false):
+				print("AUTO sit down for level %d" % int(state.get("level", 0)))
+				_auto_buys = 0
+				hud.sit_down.emit()
+			elif _auto_buys < 6:
+				_auto_buys += 1
+				print("AUTO buy a pawn")
+				hud.shop_command.emit("buy Pawn")
+			else:
+				print("AUTO cannot afford the level: giving up")
+				_auto_finish()
+		_:
+			if phase == "PLAYING" and board.enabled and not (state.get("legal", []) as Array).is_empty():
+				_on_move_chosen(randi() % (state["legal"] as Array).size())
+
+
+func _auto_finish() -> void:
+	var args := OS.get_cmdline_user_args()
+	if args.has("--shot"):
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png(args[args.find("--shot") + 1])
+	print("AUTO OK after %d rounds" % _auto_done)
+	get_tree().quit()
+
+
 # ─── Screenshots for checking ────────────────────────────────────────────────
 func _take_shot(path: String, demo: bool) -> void:
 	await get_tree().create_timer(2.0).timeout
@@ -328,7 +433,14 @@ func _take_shot(path: String, demo: bool) -> void:
 		hud.close_overlay()
 		hud.show_run(sample, false)
 		if args[args.find("--panel") + 1] == "none":
-			pass                                   # just the room, seen from the seat
+			# Just the room, seen from the seat; --seat N and --react NAME pick who sits there and what he does.
+			if args.has("--seat"):
+				_seat_opponent(int(args[args.find("--seat") + 1]))
+			if _anim != null:
+				print("ANIMS ", _anim.get_animation_list())
+			if args.has("--react"):
+				_react(args[args.find("--react") + 1])
+				await get_tree().create_timer(0.9).timeout
 		elif args[args.find("--panel") + 1] == "shop":
 			hud.show_shop(sample)
 		else:

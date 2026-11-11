@@ -74,6 +74,20 @@ First person from the player's seat, with mouse look limited to a cone; lean in 
 
 ## Status
 (newest first)
+- 2026-11-12: **all five opponents are in Godot with reactions, and a whole run plays inside the engine.**
+  - `export_people.py` exports idle + think / capture / hurt / check / win / lose (one NLA track each);
+    `opponent1..5.glb` exist (20-26 MB each). Opponents 2 and 5 were rebuilt as adults (age 0.5).
+    `make_characters.py -- name,name` now rebuilds only those and keeps the rest of the library.
+  - `main.gd`: seats `state.opponent` at the start of each round; he loops "think" while the AI works,
+    plays hurt / capture / check after moves and win / lose before the summary, then settles back.
+  - `--auto N` (in `main.gd`) plays random moves and clicks through summary and shop: 3 rounds ran clean
+    (menu -> play -> summary -> shop -> sit -> play, and game over -> menu -> new run).
+  - Checked by screenshot: each opponent seated; opponent 1 in the "lose" pose. **Not watched in motion
+    by a person yet**; reaction timing and blending are untested by eye.
+  Next: hand picking, promotion and snipe choices (item 3); card overlays (item 4); then milestone 2
+  (dealers as places, leaderboard) and milestone 3 (scanned masks, swap in the dark, lunge, intro, sound).
+  Masks are still the code-built theatre masks, which the user dislikes: replacing them needs the user
+  to approve a scan source.
 - 2026-11-11 (evening): **opponent 1 sits in the chair in Godot**, skinned, with a looping idle
   (`tools/blender/export_people.py -- opponent1` -> `godot/assets/opponent1.glb`, 25 MB;
   `main.gd` `_seat_opponent(n)` loads `opponentN.glb` if it exists). Seen in one screenshot from the
