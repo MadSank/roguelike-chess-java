@@ -1,10 +1,12 @@
 """
 Realistic masked characters for Ashes.
 
-Each character is a real human body from MPFB 2 (the MakeHuman add-on for Blender; CC0
-assets) with its game-engine skeleton, dressed in clothes that are simulated as cloth:
+Each character is a real person from MPFB 2 (the MakeHuman add-on for Blender; CC0 assets):
+a body with photographed skin, eyes, eyebrows, lashes and hair, on its game-engine skeleton.
+They wear a theatre mask strapped over the face (you see their eyes through its holes, and
+their ears, jaw, neck, hair and hands around it) and clothes that are simulated as cloth:
 
-  - a dark knitted tunic (the body itself, in fabric) and black leather gloves on real hands
+  - a dark knitted undershirt (painted onto the body) and, on some, black leather gloves
   - a long robe skirt from the waist to the floor
   - an open-front cloak from the shoulders, and a deep hood framing the theatre mask (masks.py)
 
@@ -21,6 +23,8 @@ Everything is built in MPFB's own frame, where the character faces -Y with the f
 origin; place() turns and moves the finished character into the scene.
 
 Needs: MPFB 2 installed in Blender ("blender --online-mode -c extension install mpfb --enable"),
+the MakeHuman system assets (skins, hair, eyes; CC0) unzipped into MPFB's user data folder
+(https://files.makehumancommunity.org/asset_packs/makehuman_system_assets/makehuman_system_assets_cc0.zip),
 and the fabric textures from fetch_assets.py.
 """
 import addon_utils
@@ -37,6 +41,7 @@ import scene_kit as kit
 SIM_POSE_FRAME = 40   # the body reaches its pose here...
 SIM_END = 72          # ...and the cloth has settled by here
 FINGERS = ("index", "middle", "ring", "pinky")
+MASK_SCALE = 0.9      # the theatre masks are made a little large; this fits them to a real face
 CHAIR_WIDEN = 1.3     # the opponent's chair is made this much wider (scenes and tests apply it)
 
 
@@ -58,6 +63,7 @@ def fabric(name, tex_id, tint=(1, 1, 1), scale=3.0, sheen=0.04, bump=1.0, rough_
     toward the floor, and fine fibre bumps, so it never looks like one flat colour."""
     folder = os.path.join(kit.ASSETS, "textures", tex_id)
     m = bpy.data.materials.new(name)
+    m.use_fake_user = True   # MPFB clears out unused materials when it applies a skin
     m.use_nodes = True
     nt = m.node_tree
     N, L = nt.nodes, nt.links
@@ -219,12 +225,32 @@ def make_body(name, build):
     return rig, body
 
 
-def dress_body(body, rig, mats):
-    """Tunic everywhere; gloves on the hands and a little past the wrists."""
-    body.data.materials.clear()
+def humanise(body, skin="middleage_caucasian_male", hair="short02", brows="eyebrow001"):
+    """Photographed skin, eyes, eyebrows, lashes and (unless hair is None) hair from the MakeHuman
+    system assets. Returns the hair object (or None)."""
+    HS, _ = _mpfb()
+    from bl_ext.blender_org.mpfb.services.locationservice import LocationService
+    data = LocationService.get_user_data()
+    if not os.path.isdir(os.path.join(data, "skins")):
+        raise SystemExit("MakeHuman system assets are missing from " + data + " (see the top of realistic.py).")
+
+    def asset(kind, item, asset_type):
+        return HS.add_mhclo_asset(os.path.join(data, kind, item, item + ".mhclo"), body, asset_type=asset_type,
+                                  subdiv_levels=0, material_type="MAKESKIN")
+    asset("eyes", "high-poly", "Eyes")
+    asset("eyebrows", brows, "Eyebrows")
+    asset("eyelashes", "eyelashes01", "Eyelashes")
+    hair_obj = asset("hair", hair, "Hair") if hair else None
+    HS.set_character_skin(os.path.join(data, "skins", skin, skin + ".mhmat"), body, skin_type="ENHANCED_SSS")
+    return hair_obj
+
+
+def dress_body(body, rig, mats, gloves=True):
+    """Keeps the skin on the head, neck and (without gloves) the hands; everything else gets a
+    knitted undershirt, and gloved hands get leather a little past the wrists."""
     body.data.materials.append(mats["tunic"])
     body.data.materials.append(mats["glove"])
-    body.data.materials.append(mats["lining"])
+    tunic_i, glove_i = len(body.data.materials) - 2, len(body.data.materials) - 1
     groups = {g.index: g.name for g in body.vertex_groups}
     hand_names = ("hand_", "thumb_") + tuple(f + "_" for f in FINGERS)
     wrists = {s: rig.data.bones["hand_" + s].head_local for s in ("l", "r")}
@@ -243,14 +269,15 @@ def dress_body(body, rig, mats):
                 side = n[-1]
             elif n in ("head", "neck_01"):
                 w_head += e.weight
-        hidden.append(w_head > 0.5 or coords[v.index].z > neck_z - 0.01)
+        hidden.append(w_head > 0.5 or coords[v.index].z > neck_z - 0.035)   # skin: head and neck
         cuff = side is not None and w_fore > 0.2 and (coords[v.index] - wrists[side]).length < 0.075
-        glove.append(w_hand > 0.5 or cuff)
+        glove.append(w_hand > 0.5 or (gloves and cuff))
     for p in body.data.polygons:
         if sum(glove[i] for i in p.vertices) * 2 > len(p.vertices):
-            p.material_index = 1
-        elif sum(hidden[i] for i in p.vertices) * 2 > len(p.vertices):
-            p.material_index = 2
+            if gloves:
+                p.material_index = glove_i       # (bare hands keep their skin)
+        elif sum(hidden[i] for i in p.vertices) * 2 <= len(p.vertices):
+            p.material_index = tunic_i
     for p in body.data.polygons:
         p.use_smooth = True
     sub = body.modifiers.new("smooth", "SUBSURF")
@@ -451,7 +478,7 @@ def _sleeve(bm, uv, rig, side, code, pin, arm_t, segments=28, rings=24):
                                k / rings * total)
 
 
-def make_garment(name, rig, body, mats, cloak_mat, skirt_mat, head_centre, face_y, length=0.33):
+def make_garment(name, rig, body, mats, cloak_mat, skirt_mat, head_centre, face_y, length=0.33, hood="up"):
     """Skirt + open cloak + hood as one cloth object (around the rest A-pose), pinned at the neck
     and waist. Material 0 = cloak/hood, 1 = skirt."""
     bm = bmesh.new()
@@ -531,10 +558,14 @@ def make_garment(name, rig, body, mats, cloak_mat, skirt_mat, head_centre, face_
 
     # Hood: a deep dome around the head, joined (welded later) to the collar, with an oval face
     # opening in front and a slight peak at the back of the crown.
+    # hood: "up" (deep, close around the face), "back" (pushed back: forehead, ears and jaw show)
+    # or "down" (no hood at all: just the cloak's collar).
     hx, hy, hz = head_centre
+    if hood == "back":
+        hy += 0.035
     hood_rows = []
     n_ang = 56
-    half_open = math.radians(40)                             # the face opening, either side of the front
+    half_open = math.radians(68 if hood == "back" else 44)   # the face opening, either side of the front
     # (z, radius, dome angle) per row: straight sides from the collar up to the head's middle, then a dome.
     levels = [(neck_z - 0.03 + (hz - neck_z + 0.03) * k / 9, 0.157, 0.0) for k in range(9)]
     levels += [(hz + 0.17 * math.sin(p), 0.145 * math.cos(p) + 0.012, p)
@@ -552,6 +583,12 @@ def make_garment(name, rig, body, mats, cloak_mat, skirt_mat, head_centre, face_
             y += 0.03 * back * math.sin(phi)
             row.append(bm.verts.new((x, y, z)))
         hood_rows.append(row)
+    if hood == "down":
+        for row in hood_rows:
+            for v in row:
+                bm.verts.remove(v)
+        hood_rows = []
+        n_up = 0
     # Close the crown.
     top = bm.verts.new((hx, hy + 0.05, hz + 0.175))
     for r in range(n_up):
@@ -560,18 +597,23 @@ def make_garment(name, rig, body, mats, cloak_mat, skirt_mat, head_centre, face_
             for loop in f.loops:      # metres around the head and up it, like the cloak
                 co = loop.vert.co
                 loop[uv].uv = (math.atan2(co.y - hy, co.x - hx) * 0.16, co.z)
-    for i in range(n_ang):
-        bm.faces.new((hood_rows[-1][i], hood_rows[-1][i + 1], top))
+    if hood_rows:
+        for i in range(n_ang):
+            bm.faces.new((hood_rows[-1][i], hood_rows[-1][i + 1], top))
+    else:
+        bm.verts.remove(top)
+        top = None
     for row in hood_rows:
         for v in row:
             v[stiff] = 1.0
-    for v in hood_rows[0]:
+    for v in (hood_rows[0] if hood_rows else []):
         v[pin] = 0.9
     for k, row in enumerate(hood_rows):
         for v in row:
             # The upper hood follows the head firmly (so it stays up when the head moves); the sides drape.
             v[pin] = max(v[pin], 0.35 + 0.4 * k / n_up)
-    top[pin], top[stiff] = 0.8, 1.0
+    if top:
+        top[pin], top[stiff] = 0.8, 1.0
 
     for f in bm.faces:
         f.material_index = 1 if f in skirt_faces else 0
@@ -713,7 +755,37 @@ def face_point(body, rig):
     front = min(p.y for p in pts)
     back = max(p.y for p in pts)
     centre = Vector((0.0, (front + back) / 2, (z0 + z1) / 2))
-    return centre, front, z0 + 0.075
+    # The real eye height, from the body's eye-joint markers.
+    marks = [g.index for g in body.vertex_groups if g.name in ("joint-l-eye", "joint-r-eye")]
+    coords = morphed_coords(body)
+    eyes = [coords[v.index] for v in body.data.vertices if any(e.group in marks for e in v.groups)]
+    eye_z = sum(c.z for c in eyes) / len(eyes) if eyes else z0 + 0.075
+    return centre, front, eye_z
+
+
+def mask_straps(name, centre, front, back_y, eye_z, mat, clearance):
+    """Two leather straps from the mask's edges round the back of the head (built in the rest frame)."""
+    bm = bmesh.new()
+    cy = (front + back_y) / 2 + 0.012
+    rx, ry = 0.079 + clearance, (back_y - front) / 2 - 0.006 + clearance
+    for z_mid, tilt in ((eye_z + 0.018, 0.02), (eye_z - 0.05, -0.035)):
+        rows = []
+        for i in range(41):
+            a = math.radians(-28) + math.radians(236) * i / 40          # from one temple, round the back
+            x, y = rx * math.cos(a), cy + ry * math.sin(a)
+            z = z_mid + tilt * max(0.0, math.sin(a))                    # the straps spread apart at the back
+            out = Vector((math.cos(a) / rx, math.sin(a) / ry, 0)).normalized() * 0.0025
+            rows.append([bm.verts.new((x + o.x, y + o.y, z + dz)) for o in (-out, out) for dz in (-0.006, 0.006)])
+        for a_row, b_row in zip(rows, rows[1:]):
+            for i, j in ((0, 1), (1, 3), (3, 2), (2, 0)):
+                bm.faces.new((a_row[i], a_row[j], b_row[j], b_row[i]))
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    obj = bpy.data.objects.new(name, me)
+    bpy.context.collection.objects.link(obj)
+    me.materials.append(mat)
+    return obj
 
 
 def build_character(name, spec, colliders=(), mats=None):
@@ -725,12 +797,17 @@ def build_character(name, spec, colliders=(), mats=None):
     mats = mats or default_materials()
     sc = bpy.context.scene
     rig, body = make_body(name, spec.get("build", {}))
-    dress_body(body, rig, mats)
+    hair = humanise(body, spec.get("skin", "middleage_caucasian_male"), spec.get("hair", "short02"),
+                    spec.get("brows", "eyebrow001"))
+    dress_body(body, rig, mats, gloves=spec.get("gloves", True))
     centre, front, eye_z = face_point(body, rig)
+    hood = spec.get("hood", "up")
 
     garment = make_garment(name + "_clothes", rig, body, mats, spec["cloak"], spec["skirt"], centre, front,
-                           length=spec.get("cloak_length", 0.33))
+                           length=spec.get("cloak_length", 0.33), hood=hood)
     add_collider(body)
+    if hair and hood != "down":
+        add_collider(hair, 0.004)      # the hood rests on the hair, not through it
     for o in colliders:
         add_collider(o, 0.012)
 
@@ -755,24 +832,36 @@ def build_character(name, spec, colliders=(), mats=None):
     for o in colliders:
         for m in [m for m in o.modifiers if m.type == "COLLISION"]:
             o.modifiers.remove(m)
-    for m in [m for m in body.modifiers if m.type == "COLLISION"]:
-        body.modifiers.remove(m)
+    for o in (body, hair):
+        for m in [m for m in (o.modifiers if o else []) if m.type == "COLLISION"]:
+            o.modifiers.remove(m)
     follow_body(garment, body)
     garment.parent = rig
     garment.matrix_parent_inverse = rig.matrix_world.inverted()
 
-    # The mask, on the head bone, just in front of the face.
+    # The mask, worn: its rim sits back by the cheeks so the dome covers the face and the nose,
+    # its eye holes line up with the real eyes, and two straps hold it round the back of the head.
     mask = masks.make_mask(name + "_mask", spec.get("mood", "sad"), seed=spec.get("seed", 1))
+    mask.scale = tuple(c * MASK_SCALE for c in mask.scale)
     _update()
     head_pb = rig.pose.bones["head"]
     rest_to_pose = (rig.matrix_world @ head_pb.matrix) @ (rig.matrix_world @ head_pb.bone.matrix_local).inverted()
-    mask.location = rest_to_pose @ Vector((0.0, front - 0.012, eye_z - 0.035))
+    mask.location = rest_to_pose @ Vector((0.0, front + spec.get("mask_depth", 0.04),
+                                           eye_z - masks.EYE_Y * 0.095 * MASK_SCALE))
     mask.rotation_euler = (rest_to_pose.to_quaternion() @ mask.rotation_euler.to_quaternion()).to_euler()
     world = Matrix.LocRotScale(mask.location, mask.rotation_euler.to_quaternion(), mask.scale)
     mask.parent = rig
     mask.parent_type = "BONE"
     mask.parent_bone = "head"
     mask.matrix_world = world
+    back_y = 2 * centre.y - front
+    straps = mask_straps(name + "_straps", centre, front, back_y, eye_z, mats["glove"], 0.012 if hair else 0.002)
+    straps.matrix_world = rest_to_pose
+    world = straps.matrix_world.copy()
+    straps.parent = rig
+    straps.parent_type = "BONE"
+    straps.parent_bone = "head"
+    straps.matrix_world = world
 
     rig["base_pose"] = {k: [list(q), list(loc)] for k, (q, loc) in snap.items()}
     sc.frame_set(1)

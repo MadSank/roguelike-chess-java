@@ -5,7 +5,8 @@ build_scenes.py appends them from there, so renders never have to simulate cloth
 
     "C:\\Program Files\\Blender Foundation\\Blender 5.2\\blender.exe" -b --factory-startup -P tools\\blender\\make_characters.py [-- name,name,...]
 
-The roster: five masked opponents (a new one each level, cycling) and the three dealers.
+The roster: five masked opponents (a new one each level, cycling) and the three dealers, each a
+different person (skin, hair, build, hood up / pushed back / down, bare or gloved hands).
 Each is built in MPFB's frame (facing -Y, feet at the origin). Seated opponents are posed against
 the same chair and table the cellar uses, at the same offsets (chair 0.1 m behind them, the table
 centre 1 m in front), so they fit the scene exactly once placed.
@@ -27,24 +28,37 @@ TABLE_HEIGHT_SCALE = 0.76   # the table model is bar height; the cellar shortens
 CHAIR_Y = 0.1
 
 # name, mask, build (MPFB macros), cloak and robe fabrics: (Poly Haven texture, tint, tiles per metre, sheen)
+# Each is a different person: build (MPFB macros), skin, hair (None = bald), hood ("up", "back", "down"),
+# bare or gloved hands, mask mood, and cloak / robe fabrics: (Poly Haven texture, tint, tiles per metre, sheen).
+CAUCASIAN = {"asian": 0.0, "caucasian": 1.0, "african": 0.0}
+ASIAN = {"asian": 1.0, "caucasian": 0.0, "african": 0.0}
+AFRICAN = {"asian": 0.0, "caucasian": 0.0, "african": 1.0}
 OPPONENTS = [
-    {"name": "opponent1", "mood": "sad", "seed": 5, "build": {},
+    {"name": "opponent1", "mood": "sad", "seed": 5, "build": {"race": CAUCASIAN},
+     "skin": "middleage_caucasian_male", "hair": "short02", "hood": "back", "gloves": False,
      "cloak": ("caban", (0.1, 0.085, 0.075), 2.5, 0.04), "skirt": ("poly_wool_herringbone", (0.12, 0.1, 0.09), 4.0, 0.04)},
-    {"name": "opponent2", "mood": "smile", "seed": 21, "build": {"weight": 0.35, "height": 0.85, "muscle": 0.4},
+    {"name": "opponent2", "mood": "smile", "seed": 21, "build": {"weight": 0.35, "height": 0.85, "muscle": 0.4, "age": 0.3, "race": ASIAN},
+     "skin": "young_asian_male", "hair": "short04", "hood": "down", "gloves": True,
      "cloak": ("velour_velvet", (0.2, 0.035, 0.04), 3.0, 0.35), "skirt": ("rough_linen", (0.05, 0.045, 0.045), 4.0, 0.04)},
-    {"name": "opponent3", "mood": "sad", "seed": 33, "build": {"weight": 0.85, "muscle": 0.6, "height": 0.5},
+    {"name": "opponent3", "mood": "sad", "seed": 33, "build": {"weight": 0.85, "muscle": 0.6, "height": 0.5, "age": 0.9, "race": AFRICAN},
+     "skin": "old_african_male", "hair": None, "hood": "back", "gloves": False,
      "cloak": ("hessian_230", (0.5, 0.42, 0.3), 6.0, 0.0), "skirt": ("knitted_fleece", (0.06, 0.05, 0.045), 6.0, 0.03)},
-    {"name": "opponent4", "mood": "smile", "seed": 44, "build": {"height": 0.75, "age": 0.85, "weight": 0.4},
+    {"name": "opponent4", "mood": "smile", "seed": 44, "build": {"height": 0.75, "age": 0.9, "weight": 0.4, "race": CAUCASIAN},
+     "skin": "old_caucasian_male", "hair": "short01", "hood": "down", "gloves": False,
      "cloak": ("rough_linen", (0.05, 0.06, 0.085), 3.0, 0.04), "skirt": ("poly_wool_herringbone", (0.08, 0.08, 0.09), 4.0, 0.04)},
-    {"name": "opponent5", "mood": "sad", "seed": 57, "build": {"gender": 0.0, "height": 0.55, "weight": 0.4},
+    {"name": "opponent5", "mood": "sad", "seed": 57, "build": {"gender": 0.0, "height": 0.55, "weight": 0.4, "age": 0.3, "race": CAUCASIAN},
+     "skin": "young_caucasian_female", "hair": "bob01", "hood": "down", "gloves": True,
      "cloak": ("knitted_fleece", (0.03, 0.028, 0.03), 5.0, 0.03), "skirt": ("velour_velvet", (0.08, 0.02, 0.065), 3.0, 0.3)},
 ]
 DEALERS = [
-    {"name": "card_dealer", "mood": "smile", "seed": 2, "pose": "offering", "build": {"height": 0.65},
+    {"name": "card_dealer", "mood": "smile", "seed": 2, "pose": "offering", "build": {"height": 0.65, "race": ASIAN},
+     "skin": "middleage_asian_male", "hair": "short03", "hood": "back", "gloves": False,
      "cloak": ("caban", (0.07, 0.06, 0.055), 2.5, 0.04), "skirt": ("poly_wool_herringbone", (0.1, 0.09, 0.08), 4.0, 0.04)},
-    {"name": "piece_dealer", "mood": "sad", "seed": 7, "pose": "clasped", "build": {"height": 0.7, "weight": 0.6},
+    {"name": "piece_dealer", "mood": "sad", "seed": 7, "pose": "clasped", "build": {"height": 0.7, "weight": 0.6, "race": AFRICAN},
+     "skin": "middleage_african_male", "hair": "afro01", "hood": "down", "gloves": True,
      "cloak": ("hessian_230", (0.22, 0.18, 0.13), 6.0, 0.0), "skirt": ("knitted_fleece", (0.05, 0.045, 0.04), 6.0, 0.03)},
-    {"name": "reseller", "mood": "smile", "seed": 11, "pose": "clasped", "build": {"height": 0.3, "weight": 0.65},
+    {"name": "reseller", "mood": "smile", "seed": 11, "pose": "clasped", "build": {"gender": 0.0, "height": 0.3, "weight": 0.65, "age": 0.9, "race": CAUCASIAN},
+     "skin": "old_caucasian_female", "hair": "bob02", "hood": "up", "gloves": False,
      "cloak": ("velour_velvet", (0.07, 0.05, 0.09), 3.0, 0.3), "skirt": ("rough_linen", (0.06, 0.055, 0.05), 4.0, 0.04)},
 ]
 

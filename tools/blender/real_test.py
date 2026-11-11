@@ -52,6 +52,10 @@ else:
             "skirt": realistic.fabric("skirt", "poly_wool_herringbone", (0.12, 0.1, 0.09), scale=4.0)}
     print("TABLE top", hi.z, "near edge y", hi.y)
 
+for opt in args:                      # e.g. hood=back hair=short04 gloves=0 skin=old_african_male
+    if "=" in opt:
+        k, v = opt.split("=", 1)
+        spec[k] = None if v == "none" else (v != "0") if k == "gloves" else v
 rig = realistic.build_character("opponent", spec, colliders)
 print("BUILT in %.0f s" % (time.time() - t0))
 ANIM = "anim" in args
