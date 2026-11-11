@@ -37,3 +37,9 @@ tools/blender/assets/
 # Python bytecode from the Blender scripts
 __pycache__/
 resources/board/
+
+# Godot engine binary and the editor's import cache (local)
+tools/godot/
+godot/.godot/
+godot/assets/
+mask_concepts.png
