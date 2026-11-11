@@ -95,9 +95,9 @@ public class GameServer {
                 summary = run.finishRound();
                 return null;
             case "buy":
-                return refusal(shop.buyPiece(arg));
+                return knownPiece(arg) ? refusal(shop.buyPiece(arg)) : "No such piece.";
             case "sell":
-                return refusal(shop.sellPiece(arg));
+                return knownPiece(arg) ? refusal(shop.sellPiece(arg)) : "No such piece.";
             case "buycard": {
                 int i = number(arg);
                 List<Card> offer = shop.getFaceUpCards();
@@ -144,6 +144,10 @@ public class GameServer {
     /** How many legal moves the last reported state offered (the valid range for "move N"). */
     int legalCount() {
         return legal.size();
+    }
+
+    private static boolean knownPiece(String type) {
+        return java.util.Arrays.asList(Economy.PIECE_TYPES).contains(type);
     }
 
     private static String refusal(ShopManager.Result r) {
