@@ -19,7 +19,8 @@ godot/                 Godot 4.7 project (GDScript, text scenes) : everything yo
   ...
 GameServer.java        headless Java process: one command per line in, one JSON line out
 RunController, ChessEngine, AIPlayer, ShopManager, cards...   the rules, unchanged
-tools/blender/         asset preparation only (export_godot.py writes glTF into godot/assets/)
+tools/blender/         asset preparation only (export_godot.py: room and pieces; export_people.py:
+                       characters; both write glTF into godot/assets/)
 tools/godot/           the Godot binary (local, ignored by git)
 ```
 - **The rules stay in Java.** They have 192 passing checks (`.\test.cmd`) and stay BlueJ-openable.
@@ -73,6 +74,15 @@ First person from the player's seat, with mouse look limited to a cone; lean in 
 
 ## Status
 (newest first)
+- 2026-11-11 (evening): **opponent 1 sits in the chair in Godot**, skinned, with a looping idle
+  (`tools/blender/export_people.py -- opponent1` -> `godot/assets/opponent1.glb`, 25 MB;
+  `main.gd` `_seat_opponent(n)` loads `opponentN.glb` if it exists). Seen in one screenshot from the
+  seat; **the idle animation has not been watched in motion**, and only opponent 1 is exported.
+  `TestServer.java` (13 checks, in `test.cmd`: 205 checks total) drives a whole run through the server.
+  Summary and shop panels checked with sample data (`--shot x.png --panel summary|shop|none`).
+  Done from the list below: items 1 (server side) and 2 (opponent 1). Still open: a full round played
+  inside Godot; exporting opponents 2-5 (fix ages first) and seating `state.opponent`; reactions as
+  animations (bake `realistic.react` actions in `export_people.py`, play them from `main.gd`); items 3-5.
 - 2026-11-11 (later): **first playable 3D build works.** `.\play3d.cmd` opens the Godot project: the lit
   cellar (room.glb), the 3D board and pieces (pieces.glb), click-to-move through the Java rules with the
   AI replying, the new menu, HUD (level, material, gold, hand of cards, notes), round summary and a basic

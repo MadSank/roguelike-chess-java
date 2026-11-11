@@ -17,6 +17,7 @@ var camera: Camera3D
 var lamp: SpotLight3D
 var bulb: OmniLight3D
 var post: ShaderMaterial
+var opponent: Node3D
 
 var _cam_pos := SEAT
 var _cam_look := LOOK_OPPONENT
@@ -60,6 +61,8 @@ func _build_world() -> void:
 	if board_model != null and not room.has_meta("a1_dark"):
 		board_model.rotate_y(PI / 2)          # so a1 (your left corner) is a dark square
 
+	_seat_opponent(1)
+
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color.BLACK
@@ -94,7 +97,7 @@ func _build_world() -> void:
 	lamp.light_color = Color(1.0, 0.78, 0.55)
 	lamp.light_energy = _lamp_energy
 	lamp.spot_range = 5.0
-	lamp.spot_angle = 48.0
+	lamp.spot_angle = 60.0
 	lamp.spot_angle_attenuation = 0.9
 	lamp.spot_attenuation = 1.3
 	lamp.shadow_enabled = true
@@ -107,10 +110,37 @@ func _build_world() -> void:
 	bulb.light_energy = 0.5
 	bulb.omni_range = 2.5
 	add_child(bulb)
+	# Just enough spill to find his mask and hands in the dark.
+	var spill := SpotLight3D.new()
+	spill.position = Vector3(0.25, 1.75, 0.05)
+	spill.light_color = Color(1.0, 0.72, 0.5)
+	spill.light_energy = 1.1
+	spill.spot_range = 3.0
+	spill.spot_angle = 22.0
+	spill.shadow_enabled = true
+	add_child(spill)
+	spill.look_at(Vector3(0, 1.15, -0.95))
 	# Candles on the stand to the left, the stove's glow behind, and a cold rim on the far wall.
 	_point(Vector3(-1.13, 1.22, 0.54), Color(1.0, 0.55, 0.22), 0.55, 2.2, true)
 	_point(Vector3(1.75, 0.6, 3.2), Color(1.0, 0.35, 0.1), 0.9, 3.0, false)
 	_point(Vector3(0.4, 2.2, -3.2), Color(0.45, 0.6, 1.0), 0.35, 5.0, false)
+
+
+## Puts opponent n in the chair across the table (if that model has been exported), breathing.
+func _seat_opponent(n: int) -> void:
+	if opponent != null:
+		opponent.queue_free()
+		opponent = null
+	var path := "res://assets/opponent%d.glb" % n
+	if not ResourceLoader.exists(path):
+		return
+	opponent = (load(path) as PackedScene).instantiate()
+	opponent.position = Vector3(0, 0, -1.0)
+	add_child(opponent)
+	var player := opponent.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if player != null and player.has_animation("idle"):
+		player.get_animation("idle").loop_mode = Animation.LOOP_LINEAR
+		player.play("idle")
 
 
 func _point(at: Vector3, colour: Color, energy: float, reach: float, shadows: bool) -> OmniLight3D:
@@ -297,7 +327,9 @@ func _take_shot(path: String, demo: bool) -> void:
 				"stash": [card2, card]}}
 		hud.close_overlay()
 		hud.show_run(sample, false)
-		if args[args.find("--panel") + 1] == "shop":
+		if args[args.find("--panel") + 1] == "none":
+			pass                                   # just the room, seen from the seat
+		elif args[args.find("--panel") + 1] == "shop":
 			hud.show_shop(sample)
 		else:
 			hud.show_summary({"result": "WHITE_WINS", "level": 2, "nextLevel": 3, "own": 4, "defeated": 6, "bonus": 7,
