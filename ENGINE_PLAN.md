@@ -73,5 +73,30 @@ First person from the player's seat, with mouse look limited to a cone; lean in 
 
 ## Status
 (newest first)
+- 2026-11-11 (later): **first playable 3D build works.** `.\play3d.cmd` opens the Godot project: the lit
+  cellar (room.glb), the 3D board and pieces (pieces.glb), click-to-move through the Java rules with the
+  AI replying, the new menu, HUD (level, material, gold, hand of cards, notes), round summary and a basic
+  shop panel (buy / sell pieces and cards, mystery pack, sit down). Post-process shader (fringing, grain,
+  scanlines, vignette, glitch) is on.
+  Files: `godot/project.godot`, `main.tscn`, `scripts/{rules,main,board,hud}.gd`, `shaders/post.gdshader`,
+  `tools/blender/export_godot.py`, `GameServer.java`, `play3d.cmd`.
+  Checked by screenshot only (menu, and one move with the AI's reply); **not yet played through a whole
+  round, summary or shop by hand or by script.**
+  **Next, in order:**
+  1. Play a full round by script (extend `--demo` in `main.gd`) to exercise summary -> shop -> sit; fix what breaks.
+  2. The opponent in the chair: export one person from `characters.blend` as a skinned glTF with an idle
+     animation. Steps that are needed (none done): delete MPFB helper geometry and apply shape keys on the
+     body; make the settled pose the rest pose; give the cloth skin weights from the body (Data Transfer)
+     instead of Surface Deform; replace procedural materials with plain image-textured ones (skin: the
+     MPFB diffuse image; fabrics: pre-tint the Poly Haven texture into a PNG; mask: bake or use a scan);
+     bake the idle (IK included) by sampling. Fix the age bug (0.3 -> 0.5) when rebuilding.
+  3. Hand picking (now: the first cards of the stash are taken automatically), promotion choice (now:
+     always a queen) and snipe-versus-capture choice (now: always the snipe).
+  4. Card overlays on the board (mines, stunned pieces) : the state JSON does not report them yet.
+  5. Then milestone 2 (dealers as places you turn to, leaderboard screen) and 3 (masks from museum scans,
+     reactions, swap, lunge, intro, sound).
+  Known rough edges: `room.glb` is 47 MB (2k textures; fine locally); the board model is turned in
+  `main.gd` so a1 is dark (set `rot_z=0` in `export_godot.py` and drop that line at the next export);
+  mouse look is not implemented (right click toggles sitting back / leaning in).
 - 2026-11-11: Godot 4.7.2 installed in `tools/godot`. `GameServer.java` written and smoke-tested
-  (new / move / ai / state answer with valid JSON). Godot project not started yet.
+  (new / move / ai / state answer with valid JSON).
