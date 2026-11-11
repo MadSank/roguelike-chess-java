@@ -25,9 +25,15 @@ public class CutScene extends JPanel {
 
     /** Plays the clips back to back, then runs done (also when skipped). */
     public void play(String[] clips, Runnable done) {
+        play(clips, done, 0);
+    }
+
+    /** As play, with the picture tearing like a damaged tape for the first glitchSeconds. */
+    public void play(String[] clips, Runnable done, double glitchSeconds) {
         onDone = done;
         requestFocusInWindow();
         player.playClips(clips, "table", this::finish);
+        if (glitchSeconds > 0) player.glitch(glitchSeconds);
     }
 
     private void finish() {

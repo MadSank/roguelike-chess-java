@@ -55,6 +55,9 @@ public class ScenePlayer {
     private BufferedImage fadeFrom, lastShown;
     private long fadeStart;
 
+    /** Tape glitch: the picture tears until this time (System.nanoTime). */
+    private long glitchUntil;
+    private BufferedImage scanlines;
     private float flicker = 1f;
     private final BufferedImage[] grain = new BufferedImage[4];
     private final BufferedImage[] fineGrain = new BufferedImage[4];
@@ -97,6 +100,12 @@ public class ScenePlayer {
         return playing == null ? -1 : (int) pos;
     }
 
+    /** Makes the picture tear and jump for a moment, like a damaged tape. */
+    public void glitch(double seconds) {
+        glitchUntil = System.nanoTime() + (long) (seconds * 1e9);
+        repaintHost();
+    }
+
     /** Starts a cross-fade from whatever is on screen now. */
     private void fade() {
         if (lastShown == null) return;
@@ -113,6 +122,7 @@ public class ScenePlayer {
         SceneClip c = SceneClip.load(view + "_" + name);
         if (c == null) return;
         fade();
+        if (!name.equals("yes") && !name.equals("think")) glitch(0.22); // a jolt on anything unsettling
         reaction = c;
         reactionPos = 0;
         c.prefetch(0, 1);
@@ -254,7 +264,7 @@ public class ScenePlayer {
                 if (idlePos + 10 >= idle.frameCount()) idle.prefetch(-1, 1); // wrap-around frames
             }
         }
-        boolean fading = fadeFrom != null;
+        boolean fading = fadeFrom != null || nanos < glitchUntil;
         if (playing != null || reaction != null || idle != null || fading || now - lastTick > 80) { // stills: grain at ~12 fps
             lastTick = now;
             repaintHost();
@@ -370,8 +380,40 @@ public class ScenePlayer {
             ? RenderingHints.VALUE_INTERPOLATION_BILINEAR : oldHint);
     }
 
+    /** Thin dark lines across the picture, as on a camera's small screen. */
+    private void drawScanlines(Graphics2D g, int w, int h) {
+        if (scanlines == null || scanlines.getHeight() < h || scanlines.getWidth() < w) {
+            // Full size, so it is drawn without scaling (scaling a see-through image is slow).
+            scanlines = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D sg = scanlines.createGraphics();
+            sg.setColor(new Color(0, 0, 0, 38));
+            for (int y = 0; y < h; y += 3) sg.fillRect(0, y, w, 1);
+            sg.dispose();
+        }
+        g.drawImage(scanlines, 0, 0, null);
+    }
+
+    /** Tears a few horizontal bands of the picture sideways and tints one, while a glitch lasts. */
+    private void drawGlitch(Graphics2D g, int w, int h) {
+        if (System.nanoTime() >= glitchUntil) return;
+        for (int i = 0; i < 5; i++) {
+            int bandH = 4 + rng.nextInt(Math.max(5, h / 9));
+            int y = rng.nextInt(Math.max(1, h - bandH));
+            int dx = (rng.nextBoolean() ? 1 : -1) * (6 + rng.nextInt(Math.max(8, w / 14)));
+            g.copyArea(0, y, w, bandH, dx, 0);
+            if (i < 2) {
+                g.setColor(i == 0 ? new Color(255, 40, 60, 46) : new Color(40, 220, 255, 40));
+                g.fillRect(0, y, w, Math.max(2, bandH / 3));
+            }
+        }
+    }
+
     /** Grain, vignette and flicker over whatever was drawn. */
     public void drawFilm(Graphics2D g, int w, int h) {
+        if (hd && FootageLook.ENABLED) {
+            drawGlitch(g, w, h);
+            drawScanlines(g, w, h);
+        }
         drawGrain(g, w, h);
         int mid = hd ? 35 : 70, edge = hd ? 150 : 210; // realistic frames are already lit moodily
         g.setPaint(new RadialGradientPaint(new Point2D.Float(w / 2f, h / 2f), Math.max(w, h) * 0.7f,

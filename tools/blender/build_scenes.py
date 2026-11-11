@@ -430,10 +430,79 @@ def render_all(cam, views):
         render_clip("turn_%s_%s" % (a, b), n)
 
     render_swaps(cam, q)
+    render_scares(cam, q)
     render_intro(cam, views, q)
 
 
 SWAP_FRAMES = 48
+SCARE_FRAMES = 40
+
+
+def render_scares(cam, q):
+    """When you are checkmated (scare_<n>): the lamp cuts out, and in the cold glare of a camera
+    flash the opponent is already lunging across the table at you, hands reaching, mask filling
+    the frame. Played by the game's CutScene before the round summary."""
+    eye = Vector((0, SEAT.y, EYE_SEATED))
+    flash = kit.light("SPOT", (0.12, SEAT.y - 0.05, EYE_SEATED + 0.1), 260, (0.72, 0.84, 1.0), size=0.05,
+                      target=(0, 0.2, 1.2), spot_deg=95, blend=0.5)
+    frames = max(2, SCARE_FRAMES // q)
+    hit, close = 9, 15                         # the lamp dies at `hit`; he is on you by `close`
+    for n in range(1, ROSTER + 1):
+        show_opponent(n)
+        rig = RIGS["opponent%d" % n]
+        root = rig.pose.bones["Root"]
+        hands = [bpy.data.objects["%s_hand_%s" % (rig.name, s)] for s in ("l", "r")]
+
+        # The body: the lean and the snarl of the head, on top of the idle.
+        def lunge(u):
+            t = max(0.0, min(1.0, (u * SCARE_FRAMES - hit) / (close - hit)))
+            e = t * t * (3 - 2 * t)
+            shake = math.sin(u * SCARE_FRAMES * 2.4) * 0.035 * e      # a tremor once he is close
+            return {"spine": [0.30 * e, 0, shake], "chest": [0.38 * e, 0, 0],
+                    "neck": [-0.22 * e, 0, 0], "head": [-0.42 * e, shake * 2, 0.16 * e]}
+        action = realistic.bake(rig, "%s_scare" % rig.name, SCARE_FRAMES, lunge, step=1)
+        # The whole body comes forward over the table and up; the hands leave it and reach.
+        rest_root = root.location.copy()
+        rest_hands = [h.location.copy() for h in hands]
+        moves = ((1, 0.0), (hit, 0.0), (hit + 2, 0.55), (close, 1.0), (SCARE_FRAMES, 1.06))
+        for frame, t in moves:
+            root.location = rest_root + Vector((0, -0.62 * t, 0.2 * t))
+            root.keyframe_insert("location", frame=frame)
+            for h, rest, side in zip(hands, rest_hands, (1, -1)):
+                h.location = rest + Vector((0.07 * side * t, -0.95 * t, 0.42 * t))
+                h.keyframe_insert("location", frame=frame)
+
+        # The camera flinches back and up at his face; the lamp dies and the flash takes over.
+        clear_keys(cam)
+        cam.data.lens = 24
+        face = Vector((0, -0.42, 1.36))
+        key(cam, 1, *pose(eye, Vector((0, OPPONENT.y, 1.05))))
+        key(cam, hit, *pose(eye, Vector((0, OPPONENT.y, 1.05))))
+        key(cam, close, *pose(eye + Vector((0.02, -0.1, 0.03)), face))
+        key(cam, SCARE_FRAMES, *pose(eye + Vector((-0.01, -0.13, 0.02)), face))
+        lamp_levels([(1, 1), (hit - 3, 0.3), (hit - 2, 1), (hit, 0), (SCARE_FRAMES, 0)])
+        flash.data.animation_data_clear()
+        for frame, level in ((1, 0), (hit, 0), (hit + 1, 1), (hit + 9, 1), (hit + 10, 0.15), (hit + 12, 1),
+                             (SCARE_FRAMES - 3, 1), (SCARE_FRAMES - 2, 0.0), (SCARE_FRAMES - 1, 0.8)):
+            flash.data.energy = 260 * level
+            flash.data.keyframe_insert("energy", frame=frame)
+        for fc in realistic._fcurves(flash.data.animation_data.action):
+            for k in fc.keyframe_points:
+                k.interpolation = "CONSTANT"
+
+        render_clip("scare_%d" % n, frames)
+
+        # Put him back in his chair.
+        realistic.react(rig, None)
+        root.location = rest_root
+        for h, rest in zip(hands, rest_hands):
+            h.animation_data_clear()
+            h.location = rest
+    flash.data.animation_data_clear()
+    flash.data.energy = 0
+    lamp_restore()
+    show_opponent(1)
+    cam.data.lens = 28
 
 
 def lamp_levels(levels):

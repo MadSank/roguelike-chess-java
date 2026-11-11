@@ -237,6 +237,19 @@ public class RoguelikeChessAppSwing extends JFrame {
             showRoundSummary();
             return;
         }
+        // Checkmated: the opponent lunges across the table at you (if that clip was rendered).
+        String scare = "scare_" + run.getOpponent();
+        if (result == GameResult.BLACK_WINS && SceneClip.load(scare) != null) {
+            roundEnding = true;
+            AudioPlayer.playCheckmateSound();
+            sceneLayout.show(sceneContainer, "CUT");
+            cutScene.play(new String[]{scare}, () -> {
+                roundEnding = false;
+                sceneLayout.show(sceneContainer, "BOARD");
+                showRoundSummary();
+            }, 0.5);
+            return;
+        }
         roundEnding = true;
         boardView.opponentReact(result == GameResult.BLACK_WINS ? "win" : "lose");
         javax.swing.Timer t = new javax.swing.Timer(END_REACTION_MS, e -> {

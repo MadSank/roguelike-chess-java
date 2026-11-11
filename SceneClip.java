@@ -113,6 +113,7 @@ public final class SceneClip {
         try {
             BufferedImage raw = ImageIO.read(files[idx]);
             if (raw == null) return null;
+            if (FootageLook.ENABLED) return FootageLook.apply(raw); // lens fringing and grade, once per frame
             if (raw.getType() == BufferedImage.TYPE_INT_RGB) return raw;
             // JPEGs decode as 3-byte BGR, which is slow to scale; convert once here.
             BufferedImage fast = new BufferedImage(raw.getWidth(), raw.getHeight(), BufferedImage.TYPE_INT_RGB);
