@@ -141,6 +141,11 @@ public class GameServer {
         }
     }
 
+    /** How many legal moves the last reported state offered (the valid range for "move N"). */
+    int legalCount() {
+        return legal.size();
+    }
+
     private static String refusal(ShopManager.Result r) {
         return r == ShopManager.Result.OK ? null : r.message;
     }

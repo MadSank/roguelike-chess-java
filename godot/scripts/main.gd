@@ -283,6 +283,26 @@ func _take_shot(path: String, demo: bool) -> void:
 		if "--move" in OS.get_cmdline_user_args():
 			board.click(Vector2i(5, 4))
 			await get_tree().create_timer(4.0).timeout
+	# --panel summary / shop: show that screen with sample numbers (to check its layout).
+	var args := OS.get_cmdline_user_args()
+	if args.has("--panel"):
+		var card := {"name": "Heavy Armor", "text": "First attack stuns the target for a turn instead of capturing.", "rarity": "UNCOMMON", "global": true, "price": 37}
+		var card2 := {"name": "Pawn Surge", "text": "Your pawns may advance two squares from any rank.", "rarity": "COMMON", "global": false, "price": 15}
+		var sample := {"phase": "SHOP", "level": 3, "gold": 64, "requirement": 6, "handSize": 5,
+			"shop": {"material": 4, "meets": false, "pawnCap": 3, "packOpened": false, "packPrice": 14, "pack": [],
+				"pieces": [{"type": "Pawn", "owned": 2, "price": 5, "sell": 2}, {"type": "Knight", "owned": 1, "price": 15, "sell": 7},
+					{"type": "Bishop", "owned": 0, "price": 15, "sell": 7}, {"type": "Rook", "owned": 0, "price": 25, "sell": 12},
+					{"type": "Queen", "owned": 0, "price": 45, "sell": 22}],
+				"offer": [card, card2, {"name": "Time Stop", "text": "Take two moves in a row, once.", "rarity": "RARE", "global": false, "price": 60}],
+				"stash": [card2, card]}}
+		hud.close_overlay()
+		hud.show_run(sample, false)
+		if args[args.find("--panel") + 1] == "shop":
+			hud.show_shop(sample)
+		else:
+			hud.show_summary({"result": "WHITE_WINS", "level": 2, "nextLevel": 3, "own": 4, "defeated": 6, "bonus": 7,
+				"base": 21, "interest": 3, "total": 41, "goldAfter": 64, "cardsUsedUp": ["Pawn Surge"]})
+		await get_tree().create_timer(1.0).timeout
 	await RenderingServer.frame_post_draw
 	get_viewport().get_texture().get_image().save_png(path)
 	print("SHOT ", path)
