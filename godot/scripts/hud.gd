@@ -10,6 +10,7 @@ signal continue_pressed
 signal shop_command(command: String)
 signal sit_down
 signal quit_to_menu
+signal choice_made(index: int)    ## the answer to ask_choice (-1 = cancelled)
 signal turn(step: int)          ## in the shop: turn to the next dealer left (-1) or right (+1)
 
 const BONE := Color(0.86, 0.82, 0.74)
@@ -26,7 +27,10 @@ var _status: Label
 var _hand: VBoxContainer
 var _toasts: VBoxContainer
 var _overlay: Control           # the menu, summary or shop panel currently open (or null)
-var overlay_kind := ""          ## which panel is open: "menu", "summary", "shop" or ""
+var overlay_kind := ""
+var hand_pick: Array[int] = []  ## stash cards chosen to take to the table (indices into shop.stash)
+var _hand_set := false          # false until the player (or the default) has picked this visit
+var _choice: Control          ## which panel is open: "menu", "summary", "shop" or ""
 
 
 func _ready() -> void:
@@ -284,6 +288,52 @@ func show_summary(s: Dictionary) -> void:
 
 ## The shop is the three dealers: you turn to one and his panel is beside him.
 ## view: "table" (what the level needs, and sitting down), "piece", "card" or "resell".
+func _toggle_hand(i: int, size: int, state: Dictionary) -> void:
+	if hand_pick.has(i):
+		hand_pick.erase(i)
+	elif hand_pick.size() < size:
+		hand_pick.append(i)
+	else:
+		toast("Your hand holds %d cards." % size, CRIMSON.lightened(0.4))
+	show_shop(state, "table")
+
+
+## A new visit to the dealers: the hand is picked afresh (the first cards, until the player changes it).
+func reset_hand() -> void:
+	_hand_set = false
+
+
+## A small panel of buttons; the chosen one's value comes back through choice_made.
+func ask_choice(title: String, options: Array) -> void:
+	close_choice()
+	var p := panel(GOLD.darkened(0.4), 18)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 10)
+	p.add_child(v)
+	v.add_child(text(title, 20, BONE))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	for option in options:
+		var value: int = option[1]
+		row.add_child(button(option[0], func(): close_choice(); choice_made.emit(value), CRIMSON, 16))
+	row.add_child(button("Cancel", func(): close_choice(); choice_made.emit(-1), Color(0.4, 0.4, 0.4), 14))
+	v.add_child(row)
+	var holder := CenterContainer.new()
+	holder.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	holder.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	holder.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	holder.position.y -= 120
+	holder.add_child(p)
+	_root.add_child(holder)
+	_choice = holder
+
+
+func close_choice() -> void:
+	if _choice != null:
+		_choice.queue_free()
+		_choice = null
+
+
 func show_shop(state: Dictionary, view: String = "table") -> void:
 	var shop: Dictionary = state.get("shop", {})
 	var gold := int(state.get("gold", 0))
@@ -358,16 +408,29 @@ func show_shop(state: Dictionary, view: String = "table") -> void:
 		v.add_child(text("Before level %d" % int(state.get("level", 1)), 30, BONE))
 		v.add_child(text("He will not play you with less than %d material.\nYou have %d." % [int(state.get("requirement", 0)),
 			int(shop.get("material", 0))], 16, BONE if shop.get("meets", false) else CRIMSON.lightened(0.35)))
+		# Choosing the hand: click cards to take them to the table (up to the hand size).
 		var stash: Array = shop.get("stash", [])
-		var hand := mini(stash.size(), int(state.get("handSize", 5)))
-		if hand > 0:
-			var names: Array[String] = []
-			for i in hand:
-				names.append(stash[i].get("name", ""))
-			var take := text("Your hand: " + ", ".join(PackedStringArray(names)), 14, DIM)
-			take.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			take.custom_minimum_size.x = 300
-			v.add_child(take)
+		var size := int(state.get("handSize", 5))
+		var kept: Array[int] = []
+		for i in hand_pick:
+			if i < stash.size():
+				kept.append(i)
+		hand_pick = kept
+		if not _hand_set:
+			hand_pick = []
+			for i in mini(stash.size(), size):
+				hand_pick.append(i)
+			_hand_set = true
+		if not stash.is_empty():
+			v.add_child(text("Take to the table  (%d of %d):" % [hand_pick.size(), size], 15, GOLD))
+			for i in stash.size():
+				var chosen := hand_pick.has(i)
+				var colour: Color = RARITY.get(stash[i].get("rarity", "COMMON"), DIM)
+				var b := button(("[x]  " if chosen else "[  ]  ") + stash[i].get("name", ""), func(): _toggle_hand(i, size, state), colour if chosen else Color(0.35, 0.33, 0.32), 14)
+				b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+				b.tooltip_text = stash[i].get("text", "")
+				b.custom_minimum_size.x = 300
+				v.add_child(b)
 		v.add_child(text("The dealers stand around you.", 14, DIM))
 	p.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
 	p.grow_horizontal = Control.GROW_DIRECTION_BEGIN

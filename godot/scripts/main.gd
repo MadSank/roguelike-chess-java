@@ -46,6 +46,7 @@ func _ready() -> void:
 	board = Board.new()
 	add_child(board)
 	board.move_chosen.connect(_on_move_chosen)
+	board.choice_needed.connect(_on_choice_needed)
 	_build_post()
 	hud = Hud.new()
 	add_child(hud)
@@ -55,6 +56,7 @@ func _ready() -> void:
 	hud.shop_command.connect(func(c: String): Rules.send(c))
 	hud.sit_down.connect(_on_sit_down)
 	hud.turn.connect(_on_turn)
+	hud.choice_made.connect(func(i: int): if i >= 0: _on_move_chosen(i))
 	hud.quit_to_menu.connect(func(): Rules.send("abandon"); Rules.send("menu"))
 	Rules.answered.connect(_on_answer)
 	Rules.failed.connect(func(m: String): hud.status(m))
@@ -408,6 +410,7 @@ func _on_continue() -> void:
 	else:
 		board.show_state({})
 		_sit_back(true)
+		hud.reset_hand()
 		hud.show_shop(state, _view)
 
 
@@ -420,12 +423,29 @@ func _on_turn(step: int) -> void:
 
 
 func _on_sit_down() -> void:
-	# For now the first cards of the stash (up to the hand size) come to the table.
-	var stash: Array = Rules.state.get("shop", {}).get("stash", [])
+	# The cards chosen at the table view come with you (the first ones, unless you changed them).
 	var take: Array[String] = []
-	for i in mini(stash.size(), int(Rules.state.get("handSize", 5))):
+	for i in hud.hand_pick:
 		take.append(str(i))
 	Rules.send("sit " + ",".join(take))
+
+
+## Several moves end on the square you clicked: ask which (a promotion piece, or snipe versus capture).
+func _on_choice_needed(indices: Array) -> void:
+	var legal: Array = Rules.state.get("legal", [])
+	var names := {"Q": "Queen", "R": "Rook", "B": "Bishop", "N": "Knight"}
+	var options: Array = []
+	var promotion := false
+	for i in indices:
+		var m: Dictionary = legal[i]
+		if m.get("promo", "") != "":
+			promotion = true
+			options.append([names.get(m["promo"], m["promo"]), i])
+		elif m.get("snipe", false):
+			options.append(["Shoot from here", i])
+		else:
+			options.append(["Move and take", i])
+	hud.ask_choice("Promote to:" if promotion else "Your bishop can shoot or take:", options)
 
 
 # ─── Playing by itself, for checking ─────────────────────────────────────────
@@ -511,6 +531,8 @@ func _take_shot(path: String, demo: bool) -> void:
 			_turn_to(args[args.find("--face") + 1])
 			await get_tree().create_timer(2.0).timeout
 			hud.show_shop(sample, _view)
+		elif args[args.find("--panel") + 1] == "promote":
+			hud.ask_choice("Promote to:", [["Queen", 0], ["Rook", 1], ["Bishop", 2], ["Knight", 3]])
 		elif args[args.find("--panel") + 1] == "none":
 			# Just the room, seen from the seat; --seat N and --react NAME pick who sits there and what he does.
 			if args.has("--seat"):

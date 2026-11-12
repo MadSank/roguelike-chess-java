@@ -5,6 +5,7 @@ class_name Board
 ## the state's "legal" list and reports the chosen one's index.
 
 signal move_chosen(index: int)
+signal choice_needed(indices: Array)   ## several moves go to one square (promotions, snipe or capture): ask
 
 const SQUARE := 0.05789          ## metres per square (from the chess set model)
 const TOP := 0.7815              ## height of the board's playing surface
@@ -192,14 +193,12 @@ func click(cell: Vector2i) -> void:
 			if int(m["fr"]) == _selected.x and int(m["fc"]) == _selected.y and _target_of(m) == cell:
 				matches.append(i)
 		if not matches.is_empty():
-			# Several moves to one square: promotions (prefer the queen) or snipe-versus-capture (prefer the snipe).
-			var pick := matches[0]
-			for i in matches:
-				if _legal[i].get("promo", "") == "Q" or bool(_legal[i].get("snipe", false)):
-					pick = i
 			_selected = Vector2i(-1, -1)
 			_refresh_marks()
-			move_chosen.emit(pick)
+			if matches.size() == 1:
+				move_chosen.emit(matches[0])
+			else:                                       # a promotion, or snipe versus capture: the player decides
+				choice_needed.emit(matches)
 			return
 	var code: String = _codes.get(cell, "")
 	_selected = cell if code.begins_with("w") else Vector2i(-1, -1)
