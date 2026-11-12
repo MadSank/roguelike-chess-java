@@ -6,8 +6,10 @@ Update the **Status** section at the end of every working session.
 ## Decision (2026-11-12)
 **Pure Java that opens and runs in BlueJ**, no Godot, no Blender, no image or sound files.
 The look is **like Undertale** (original art, nothing copied from it), all three parts the user asked for:
-1. **Pixel look:** a 320 x 240 canvas drawn with hard pixels and blown up whole; black backgrounds;
-   white-bordered text boxes; a hand-made 5 x 7 pixel font.
+1. **Pixel look:** a 480 x 360 canvas drawn with hard pixels and blown up whole (2x, 960 x 720) with
+   faint scanlines; a hand-made 5 x 7 pixel font. Quality bar (user's reference image, 2026-11-12):
+   painterly pixel art lit by a warm lamp, shadows leaning purple, highlights leaning orange, warm rim
+   light, dithered tone clusters instead of black outlines.
 2. **Talking:** the masked characters speak in typewriter text boxes ("* ..." narration and quoted
    lines), each letter with a little square-wave voice blip at that character's pitch.
 3. **Battle feel:** facing the opponent he is shown big above a text box, with four choices along the
@@ -37,18 +39,28 @@ Don't copy Undertale's characters, its heart cursor, or its FIGHT/ACT/ITEM/MERCY
 - status in the top-left corner as icons: a coin (gold), a skull (level), a pawn (army / requirement).
 
 ## Architecture
-- `Px.java`: the pixel kit. 320 x 240 canvas (`canvas`, `pen`, `present` scales to the window with whole
+- `Px.java`: the pixel kit. 480 x 360 canvas (`present` adds faint scanlines; `cellar` caches a
+  lit brick wall per lamp position: per-brick tone, cracks, missing bricks, dithered falloff) (`canvas`, `pen`, `present` scales to the window with whole
   pixels, `toCanvas` maps mouse clicks back), palette, the 5 x 7 font (`text`, `centred`, `wrap` with a
   letter count for typewriter text), `box` (white-bordered), `Talk` (typewriter line with voice blips),
   `blip` (Java Sound square wave; silent if there is no audio device).
-- `PixelArt.java`: sprites drawn in code. `person(who, t, reaction, p)` returns an 80 x 72 upper-body
-  image (blow it up 2x for the big view); the eight `Person`s; `piece(g, code, x, y)` 10-pixel pieces.
+- `Shade.java`: the shading engine. `part(img, shape, ramp, round)` rasterises a Java2D shape, builds a
+  dome height field from a distance transform, lights it (lamp up-left-front), maps it onto a `ramp()`
+  (purple shadows to orange lights) with Bayer dithering and a warm rim. `stroke` for hoses / ropes.
+  Every sprite is built from these parts plus a few hand-placed pixels (eye glints, stitches, rivets).
+- `PixelArt.java`: sprites drawn in code at 1x (never scaled, so all pixels match). `person(who, t,
+  reaction, p)` returns a 150 x 140 upper-body image (peaked hood or bare, robe, sleeves, hands on the
+  table, mask); the eight `Person`s; `piece(g, code, x, y)` turned wooden pieces 18 x 28, cached.
 - `PixelPreview.java`: `java PixelPreview` (live window: click = next screen, key = next character) or
   `java PixelPreview out.png SCREEN WHO` (1 facing him, 2 the board, 3 a dealer).
 - To do: the real screens use these (see Status).
 
 ## Status
 (newest first)
+- 2026-11-12 (quality): **quality upgrade done, waiting for the user's verdict.** Canvas 480 x 360,
+  `Shade.java` added, all eight characters, the pieces, the wall, lamp, plank table and board redrawn in
+  the reference style. Preview layouts rescaled. Next if approved: the conversion listed below (window
+  960 x 720 at 2x, not 3x); board squares 22 x 18 at (152, 156) as in `PixelPreview` screen 2.
 - 2026-11-12 (pixel): **pixel prototype done, waiting for the user's verdict.** All eight characters,
   the facing-him screen, the board screen and a dealer screen render (`pixel_preview.png`, ignored).
   Nothing in the game uses them yet. Next if approved: rebuild the game's screens on a single pixel

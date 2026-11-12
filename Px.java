@@ -5,14 +5,14 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * The pixel-art kit: a small canvas (320 x 240) drawn with hard pixels and blown up to the window,
+ * The pixel-art kit: a small canvas (480 x 360) drawn with hard pixels and blown up to the window,
  * a hand-made 5 x 7 pixel font, white-bordered text boxes, typewriter text with little voice blips.
  * Pure Java (Java2D and Java Sound), no image or sound files.
  */
 public final class Px {
     private Px() {}
 
-    public static final int W = 320, H = 240;
+    public static final int W = 480, H = 360;
 
     // ─── Palette ────────────────────────────────────────────────
     public static final Color BLACK = new Color(0, 0, 0);
@@ -58,7 +58,12 @@ public final class Px {
         g.setColor(Color.BLACK);
         g.fillRect(0, 0, w, h);
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-        g.drawImage(canvas, (w - dw) / 2, (h - dh) / 2, dw, dh, null);
+        int ox = (w - dw) / 2, oy = (h - dh) / 2;
+        g.drawImage(canvas, ox, oy, dw, dh, null);
+        if (scale >= 2) {                                              // faint scanlines, like an old screen
+            g.setColor(new Color(0, 0, 0, 34));
+            for (int y = oy + scale - 1; y < oy + dh; y += scale) g.fillRect(ox, y, dw, 1);
+        }
         return scale;
     }
 
@@ -125,36 +130,62 @@ public final class Px {
         text(g, name, x + 5, y + 2, WOOD_DARK, 1);
     }
 
-    /** The cellar wall: rough bricks fading into the dark, lit by a pool of lamplight around (lx, ly). */
+    private static final Map<String, BufferedImage> WALLS = new HashMap<>();
+    private static final int[][] BAYER = {{0, 8, 2, 10}, {12, 4, 14, 6}, {3, 11, 1, 9}, {15, 7, 13, 5}};
+
+    private static int hash(int x, int y) {
+        int h = x * 73856093 ^ y * 19349663;
+        h = (h ^ (h >>> 13)) * 1274126177;
+        return (h ^ (h >>> 16)) & 0x7fffffff;
+    }
+
+    /** The cellar wall: rough bricks fading into purple dark, lit by a pool of lamplight around (lx, ly). */
     public static void cellar(Graphics2D g, int lx, int ly, int radius, double flicker) {
-        rect(g, 0, 0, W, H, BLACK);
-        for (int row = 0; row * 8 < H; row++) {
-            int off = (row % 2) * 9;
-            for (int col = -1; col * 18 < W; col++) {
-                int bx = col * 18 + off, by = row * 8;
-                double d = Math.hypot(bx + 9 - lx, (by + 4 - ly) * 1.3) / radius;
-                if (d > 1.15) continue;
-                Color c = d < 0.55 ? BRICK : BRICK_DARK;
-                rect(g, bx + 1, by + 1, 16, 6, c);
-                if (d < 0.4) rect(g, bx + 1, by + 1, 16, 1, new Color(96, 56, 44));
-                if (d > 0.8) {                                        // dither into the dark at the edge
-                    g.setColor(BLACK);
-                    for (int yy = by + 1; yy < by + 7; yy++) {
-                        for (int xx = bx + 1 + (yy % 2); xx < bx + 17; xx += 2) g.fillRect(xx, yy, 1, 1);
-                    }
-                }
-            }
-        }
-        // The light itself: amber specks, thicker near the lamp, so the light falls off in dither.
-        g.setColor(new Color(255, 196, 120, (int) (70 * flicker)));
+        BufferedImage wall = WALLS.computeIfAbsent(lx + "," + ly + "," + radius, k -> wall(lx, ly, radius));
+        g.drawImage(wall, 0, 0, null);
+        // The light breathing: a few warm specks in the middle of the pool, more when the flame is high.
+        g.setColor(new Color(255, 196, 120, (int) (40 * flicker)));
         for (int y = 0; y < H; y += 2) {
             for (int x = (y / 2) % 2; x < W; x += 2) {
                 double d = Math.hypot(x - lx, (y - ly) * 1.4) / radius;
-                int hash = (x * 73856093) ^ (y * 19349663);
-                hash = (hash ^ (hash >>> 13)) * 1274126177;
-                if (d < 0.75 && ((hash >>> 8) & 255) < (0.75 - d) * 300) g.fillRect(x, y, 1, 1);
+                if (d < 0.6 && (hash(x, y) & 255) < (0.6 - d) * 260 * flicker) g.fillRect(x, y, 1, 1);
             }
         }
+    }
+
+    private static BufferedImage wall(int lx, int ly, int radius) {
+        BufferedImage img = new BufferedImage(W, H, BufferedImage.TYPE_INT_RGB);
+        Color[] ramp = Shade.ramp(new Color(112, 62, 50), 6);
+        Color[] mortar = Shade.ramp(new Color(52, 36, 36), 4);
+        Color black = new Color(10, 6, 14);
+        int bw = 24, bh = 10;
+        for (int y = 0; y < H; y++) {
+            int row = y / bh, off = (row % 2) * (bw / 2);
+            for (int x = 0; x < W; x++) {
+                int col = Math.floorDiv(x + off, bw);
+                int bx = x + off - col * bw, by = y - row * bh;
+                int id = hash(col * 7 + 3, row * 13 + 5);
+                boolean gap = bx == 0 || by == 0 || (bx == 1 && by == 1);
+                boolean missing = id % 23 == 0;                                // a brick fallen out: only dark behind
+                double d = Math.hypot(x - lx, (y - ly) * 1.3) / radius;
+                double light = Math.pow(Math.max(0, 1 - d), 1.7) * 1.15 + 0.03;
+                double tone = light;
+                if (!gap) {
+                    tone += ((id >>> 4) % 9 - 4) * 0.025;                     // each brick its own shade
+                    if (by == 1 && !missing) tone += 0.12;                     // top edges catch the lamp
+                    if (by == bh - 1 || bx == bw - 1) tone -= 0.1;
+                    int grit = hash(x, y) % 17;
+                    if (grit == 0) tone -= 0.15; else if (grit == 1) tone += 0.08;
+                    if ((id >>> 9) % 7 == 0 && Math.abs(bx - 6 - by) == 0) tone -= 0.25;   // a crack
+                }
+                if (missing && !gap) tone *= 0.25;
+                Color[] r = gap ? mortar : ramp;
+                double idx = tone * (r.length - 1) + (BAYER[y & 3][x & 3] / 16.0 - 0.47);
+                int k = (int) Math.round(idx);
+                img.setRGB(x, y, k < 0 || tone < 0.06 ? black.getRGB() : r[Math.min(r.length - 1, k)].getRGB());
+            }
+        }
+        return img;
     }
 
     // ─── Icons (8 x 8) ──────────────────────────────────────────
@@ -187,15 +218,15 @@ public final class Px {
     // ─── The choices: a fan of cards ─────────────────────────────
     /** Choices drawn as cards along the bottom; the chosen one rises with a candle flame over it. */
     public static void cards(Graphics2D g, String[] labels, int selected, double t) {
-        int n = labels.length, cw = 62, gap = 10, total = n * cw + (n - 1) * gap, x0 = (W - total) / 2;
+        int n = labels.length, cw = 84, gap = 14, total = n * cw + (n - 1) * gap, x0 = (W - total) / 2;
         for (int i = 0; i < n; i++) {
-            int x = x0 + i * (cw + gap), y = 214 - (i == selected ? 3 : 0);
+            int x = x0 + i * (cw + gap), y = H - 36 - (i == selected ? 3 : 0);
             rect(g, x, y, cw, 30, BLACK);
             rect(g, x + 1, y + 1, cw - 2, 28, i == selected ? CREAM : ASH);
             rect(g, x + 3, y + 3, cw - 6, 24, i == selected ? new Color(214, 196, 160) : new Color(112, 102, 94));
             dot(g, x + 3, y + 3, DRED);
             dot(g, x + cw - 4, y + 26, DRED);
-            centred(g, labels[i], x + cw / 2 + (i == selected ? 4 : 0), y + 12, i == selected ? WOOD_DARK : CHAR, 1);
+            centred(g, labels[i], x + cw / 2 + (i == selected ? 4 : 0), y + 11, i == selected ? WOOD_DARK : CHAR, 1);
             if (i == selected) flame(g, x + 5, y + 9, t);                  // a candle on the chosen card
         }
     }
