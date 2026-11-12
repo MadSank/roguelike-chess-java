@@ -86,6 +86,120 @@ public final class Px {
         rect(g, x + 3, y + 3, w - 6, h - 6, BLACK);
     }
 
+    // ─── The Ashes look: charred wood, brass, candlelight ───────
+    public static final Color WOOD = new Color(74, 44, 30);
+    public static final Color WOOD_LIGHT = new Color(104, 64, 42);
+    public static final Color WOOD_DARK = new Color(40, 24, 18);
+    public static final Color CHAR = new Color(24, 18, 16);
+    public static final Color EMBER = new Color(232, 120, 40);
+    public static final Color CREAM = new Color(236, 222, 190);
+    public static final Color ASH = new Color(140, 128, 116);
+    public static final Color BRICK = new Color(70, 40, 34);
+    public static final Color BRICK_DARK = new Color(44, 26, 24);
+    public static final Color MORTAR = new Color(30, 22, 22);
+
+    /** A charred wooden frame with brass rivets at the corners, dark inside: every text box and panel. */
+    public static void frame(Graphics2D g, int x, int y, int w, int h) {
+        rect(g, x, y, w, h, BLACK);
+        rect(g, x + 1, y + 1, w - 2, h - 2, WOOD);
+        for (int i = x + 3; i < x + w - 3; i += 7) {               // grain along the top and bottom
+            dot(g, i, y + 2, WOOD_LIGHT);
+            dot(g, i + 3, y + h - 3, WOOD_DARK);
+        }
+        rect(g, x + 1, y + 1, w - 2, 1, WOOD_LIGHT);
+        rect(g, x + 4, y + 4, w - 8, h - 8, BLACK);
+        rect(g, x + 5, y + 5, w - 10, h - 10, CHAR);
+        for (int[] c : new int[][]{{x + 2, y + 2}, {x + w - 4, y + 2}, {x + 2, y + h - 4}, {x + w - 4, y + h - 4}}) {
+            rect(g, c[0], c[1], 2, 2, GOLD);
+            dot(g, c[0], c[1], YELLOW);
+        }
+    }
+
+    /** A small brass name plate (who is speaking), sitting on the top edge of a frame. */
+    public static void plate(Graphics2D g, String name, int x, int y) {
+        int w = textWidth(name, 1) + 10;
+        rect(g, x, y, w, 11, BLACK);
+        rect(g, x + 1, y + 1, w - 2, 9, GOLD);
+        rect(g, x + 1, y + 1, w - 2, 1, YELLOW);
+        rect(g, x + 1, y + 9, w - 2, 1, new Color(150, 110, 40));
+        text(g, name, x + 5, y + 2, WOOD_DARK, 1);
+    }
+
+    /** The cellar wall: rough bricks fading into the dark, lit by a pool of lamplight around (lx, ly). */
+    public static void cellar(Graphics2D g, int lx, int ly, int radius, double flicker) {
+        rect(g, 0, 0, W, H, BLACK);
+        for (int row = 0; row * 8 < H; row++) {
+            int off = (row % 2) * 9;
+            for (int col = -1; col * 18 < W; col++) {
+                int bx = col * 18 + off, by = row * 8;
+                double d = Math.hypot(bx + 9 - lx, (by + 4 - ly) * 1.3) / radius;
+                if (d > 1.15) continue;
+                Color c = d < 0.55 ? BRICK : BRICK_DARK;
+                rect(g, bx + 1, by + 1, 16, 6, c);
+                if (d < 0.4) rect(g, bx + 1, by + 1, 16, 1, new Color(96, 56, 44));
+                if (d > 0.8) {                                        // dither into the dark at the edge
+                    g.setColor(BLACK);
+                    for (int yy = by + 1; yy < by + 7; yy++) {
+                        for (int xx = bx + 1 + (yy % 2); xx < bx + 17; xx += 2) g.fillRect(xx, yy, 1, 1);
+                    }
+                }
+            }
+        }
+        // The light itself: amber specks, thicker near the lamp, so the light falls off in dither.
+        g.setColor(new Color(255, 196, 120, (int) (70 * flicker)));
+        for (int y = 0; y < H; y += 2) {
+            for (int x = (y / 2) % 2; x < W; x += 2) {
+                double d = Math.hypot(x - lx, (y - ly) * 1.4) / radius;
+                int hash = (x * 73856093) ^ (y * 19349663);
+                hash = (hash ^ (hash >>> 13)) * 1274126177;
+                if (d < 0.75 && ((hash >>> 8) & 255) < (0.75 - d) * 300) g.fillRect(x, y, 1, 1);
+            }
+        }
+    }
+
+    // ─── Icons (8 x 8) ──────────────────────────────────────────
+    private static void icon(Graphics2D g, String[] rows, int x, int y, Color c) {
+        g.setColor(c);
+        for (int r = 0; r < rows.length; r++) {
+            for (int col = 0; col < rows[r].length(); col++) {
+                if (rows[r].charAt(col) == '#') g.fillRect(x + col, y + r, 1, 1);
+            }
+        }
+    }
+
+    public static void coin(Graphics2D g, int x, int y) {
+        icon(g, new String[]{"..####..", ".######.", "##.##.##", "##.##.##", "##.##.##", "##.##.##", ".######.", "..####.."}, x, y, GOLD);
+        icon(g, new String[]{"..####..", ".#......", "#.......", "#.......", "#.......", "#.......", ".#......", "........"}, x, y, YELLOW);
+    }
+
+    public static void skull(Graphics2D g, int x, int y) {
+        icon(g, new String[]{".######.", "########", "##.##.##", "#..##..#", "########", ".######.", ".#.##.#.", ".######."}, x, y, CREAM);
+    }
+
+    public static void flame(Graphics2D g, int x, int y, double t) {
+        int f = ((int) (t * 8)) % 2;
+        icon(g, f == 0 ? new String[]{"...#....", "..##....", "..###...", ".#####..", ".##.##..", "..###...", "..###..."}
+                       : new String[]{"....#...", "...##...", "..###...", ".#####..", ".##.##..", "..###...", "..###..."}, x, y, EMBER);
+        icon(g, new String[]{"........", "........", "........", "........", "...#....", "..###...", "........"}, x, y, YELLOW);
+        rect(g, x + 2, y + 7, 3, 4, CREAM);                           // the candle under it
+    }
+
+    // ─── The choices: a fan of cards ─────────────────────────────
+    /** Choices drawn as cards along the bottom; the chosen one rises with a candle flame over it. */
+    public static void cards(Graphics2D g, String[] labels, int selected, double t) {
+        int n = labels.length, cw = 62, gap = 10, total = n * cw + (n - 1) * gap, x0 = (W - total) / 2;
+        for (int i = 0; i < n; i++) {
+            int x = x0 + i * (cw + gap), y = 214 - (i == selected ? 3 : 0);
+            rect(g, x, y, cw, 30, BLACK);
+            rect(g, x + 1, y + 1, cw - 2, 28, i == selected ? CREAM : ASH);
+            rect(g, x + 3, y + 3, cw - 6, 24, i == selected ? new Color(214, 196, 160) : new Color(112, 102, 94));
+            dot(g, x + 3, y + 3, DRED);
+            dot(g, x + cw - 4, y + 26, DRED);
+            centred(g, labels[i], x + cw / 2 + (i == selected ? 4 : 0), y + 12, i == selected ? WOOD_DARK : CHAR, 1);
+            if (i == selected) flame(g, x + 5, y + 9, t);                  // a candle on the chosen card
+        }
+    }
+
     // ─── The font: 5 x 7 glyphs (g, j, p, q, y and the comma hang one row lower), from '#' and '.' ───
     private static final Map<Character, String[]> GLYPHS = new HashMap<>();
 

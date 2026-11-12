@@ -11,8 +11,8 @@ The look is **like Undertale** (original art, nothing copied from it), all three
 2. **Talking:** the masked characters speak in typewriter text boxes ("* ..." narration and quoted
    lines), each letter with a little square-wave voice blip at that character's pitch.
 3. **Battle feel:** facing the opponent he is shown big above a text box, with four choices along the
-   bottom (PLAY, CARDS, TALK, YIELD) and a small pawn as the cursor; choosing PLAY shows the board in a
-   box under him. The shop is the same layout with a dealer behind his counter and < > to turn.
+   bottom; choosing PLAY shows the board on the table under him. The shop is the same layout with a
+   dealer behind his counter and < > to turn.
 Superseded the same day: a "dark storybook" look drawn in Java2D (`Ink.java`, `Figures.java`,
 `Cellar.java`, `ArtPreview.java` remain but are unused; delete them once the pixel game is done).
 The Godot 3D version (`godot/`, `GameServer.java`, `play3d.cmd`, `ENGINE_PLAN.md`) is kept, set aside.
@@ -27,6 +27,14 @@ Don't copy Undertale's characters, its heart cursor, or its FIGHT/ACT/ITEM/MERCY
 - Plain `javac *.java`, default package, flat folder, BlueJ-openable, no libraries. Tests stay
   plain `Test*.java` classes (`.\test.cmd`). `DESIGN.md` is the rulebook.
 - The user's terminal is PowerShell 5.1. Don't paste code into chat; write files and summarise.
+
+**Inspired by Undertale, not a copy of it** (the user's correction). Ashes' own look:
+- a lamp-lit brick cellar behind everything (not a black void), the light falling off in dither;
+- text boxes are charred wood frames with brass corner rivets, the speaker's name on a brass plate;
+  narration in ash grey, spoken lines in cream inside quotes (no "*" narration prefix);
+- choices are a row of playing cards (PLAY, CARDS, TALK, LEAVE; in the shop BUY, SELL, TALK, BACK);
+  the chosen card rises with a lit candle on it;
+- status in the top-left corner as icons: a coin (gold), a skull (level), a pawn (army / requirement).
 
 ## Architecture
 - `Px.java`: the pixel kit. 320 x 240 canvas (`canvas`, `pen`, `present` scales to the window with whole

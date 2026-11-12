@@ -12,14 +12,15 @@ import java.io.File;
 public class PixelPreview extends JPanel {
     private int screen = 0, who = 0;
     private final long start = System.currentTimeMillis();
-    private Px.Talk talk = new Px.Talk(LINES[0], 180);
+    private Px.Talk talk = new Px.Talk(LINES[0][0] + " " + LINES[0][1], 180);
 
-    static final String[] LINES = {
-        "* The masked man drums his fingers on the table. \"Sit. Your king looks lonely.\"",
-        "* The Doctor adjusts his beak. \"I have cured worse openings than yours.\"",
-        "* The Goalie leans in. You can hear him breathing behind the holes.",
-        "* The sack rustles. Something under it is smiling.",
-        "* The Welder's glass flickers green. \"Let's burn through this.\"",
+    /** What you see (narration, dim) and what he says (speech, bright), per opponent. */
+    static final String[][] LINES = {
+        {"He drums his fingers on the table.", "Sit. Your king looks lonely."},
+        {"The beak tilts toward your pieces.", "I have cured worse openings than yours."},
+        {"He leans in. You can hear him breathing behind the holes.", "Your move. Don't keep me waiting."},
+        {"The sack rustles. Something under it is smiling.", "Play. I'll be gentle. At first."},
+        {"Green light flickers behind the glass.", "Let's burn through this."},
     };
 
     static final String[][] BOARD = {
@@ -33,84 +34,99 @@ public class PixelPreview extends JPanel {
         return who < 5 ? PixelArt.OPPONENTS[who] : new PixelArt.Person[]{PixelArt.CARD_DEALER, PixelArt.PIECE_DEALER, PixelArt.RESELLER}[who - 5];
     }
 
-    /** The lamp above: a bulb and a faint dithered cone. */
+    /** The lamp above: flex, shade and bulb. */
     static void lamp(Graphics2D g, int cx, double t) {
         Px.rect(g, cx, 0, 1, 6, Px.DIM);
-        Px.rect(g, cx - 5, 6, 11, 3, Px.DARK);
+        Px.rect(g, cx - 6, 6, 13, 1, Px.BLACK);
+        Px.rect(g, cx - 5, 6, 11, 3, new Color(60, 66, 56));
+        Px.rect(g, cx - 7, 9, 15, 1, Px.BLACK);
         boolean on = Math.sin(t * 9) > -0.95;
-        Px.rect(g, cx - 1, 9, 3, 2, on ? Px.YELLOW : Px.GOLD);
-        g.setColor(new Color(60, 50, 30));
-        for (int y = 12; y < 140; y += 2) {
-            int half = 6 + (y - 12) * 2 / 3;
-            for (int x = cx - half + (y % 4 == 0 ? 0 : 1); x <= cx + half; x += 4) g.fillRect(x, y, 1, 1);
-        }
+        Px.rect(g, cx - 1, 10, 3, 2, on ? Px.YELLOW : Px.GOLD);
     }
 
     static void table(Graphics2D g, int y) {
-        Px.rect(g, 40, y, 240, 8, Px.BROWN);
-        Px.rect(g, 40, y + 6, 240, 2, Px.DBROWN);
-        Px.rect(g, 40, y - 1, 240, 1, Px.BLACK);
+        Px.rect(g, 30, y - 1, 260, 1, Px.BLACK);
+        Px.rect(g, 30, y, 260, 7, Px.WOOD_LIGHT);
+        Px.rect(g, 30, y, 260, 1, new Color(140, 90, 60));
+        Px.rect(g, 30, y + 5, 260, 2, Px.WOOD_DARK);
+        for (int x = 36; x < 290; x += 23) Px.rect(g, x, y + 2, 6, 1, Px.WOOD);
     }
 
-    static void buttons(Graphics2D g, int selected, double t) {
-        String[] labels = {"PLAY", "CARDS", "TALK", "YIELD"};
-        for (int i = 0; i < 4; i++) {
-            int x = 13 + i * 76, y = 212;
-            Color c = i == selected ? Px.YELLOW : Px.ORANGE;
-            Px.rect(g, x, y, 66, 22, c);
-            Px.rect(g, x + 2, y + 2, 62, 18, Px.BLACK);
-            int tx = x + 22;
-            if (i == selected) PixelArt.piece(g, "wP", x + 11, y + 17 - (int) (t * 3) % 2);   // the cursor: a little pawn
-            else tx = x + (66 - Px.textWidth(labels[i], 1)) / 2;
-            Px.text(g, labels[i], tx, y + 8, c, 1);
-        }
+    /** Coin and gold, skull and level, pawn and army, in the top-left corner. */
+    static void status(Graphics2D g) {
+        Px.coin(g, 6, 5);
+        Px.text(g, "64", 17, 6, Px.YELLOW, 1);
+        Px.skull(g, 36, 5);
+        Px.text(g, "3", 47, 6, Px.CREAM, 1);
+        PixelArt.piece(g, "wP", 62, 13);
+        Px.text(g, "4/6", 70, 6, Px.CREAM, 1);
+    }
+
+    /** A framed text box with a name plate: narration in ash grey, then his words in cream. */
+    static void speech(Graphics2D g, String name, String narration, String said, int y, int h, int shown) {
+        Px.frame(g, 14, y, 292, h);
+        Px.plate(g, name, 24, y - 6);
+        int lines = Px.wrap(g, narration, 26, y + 11, 268, Px.ASH, shown);
+        Px.wrap(g, "\"" + said + "\"", 26, y + 13 + lines * 10, 268, Px.CREAM, shown - narration.length() - 1);
     }
 
     public static BufferedImage render(int screen, int who, double t, Px.Talk talk) {
         BufferedImage img = Px.canvas();
         Graphics2D g = Px.pen(img);
         PixelArt.Person p = person(who);
-        if (screen == 0) {                                          // facing him: big, with his line and the four choices
+        double flicker = 0.85 + 0.15 * Math.sin(t * 7) * Math.sin(t * 2.3);
+        String[] line = LINES[Math.min(who, 4)];
+        if (screen == 0) {                                          // facing him: big, with his words and the choices
+            Px.cellar(g, 160, 70, 190, flicker);
             lamp(g, 160, t);
-            g.drawImage(PixelArt.person(p, t, null, 0), 80, 0, 160, 144, null);
-            table(g, 138);
-            Px.box(g, 16, 150, 288, 52);
-            Px.wrap(g, talk.text, 26, 159, 270, Px.WHITE, talk.shown());
-            Px.text(g, "LV 3   GOLD 64   ARMY 4/6", 18, 203, Px.WHITE, 1);
-            buttons(g, 0, t);
-        } else if (screen == 1) {                                   // the board: him smaller above it
+            g.drawImage(PixelArt.person(p, t, null, 0), 80, 2, 160, 144, null);
+            table(g, 140);
+            speech(g, p.name, line[0], line[1], 156, 50, talk.shown());
+            status(g);
+            Px.cards(g, new String[]{"PLAY", "CARDS", "TALK", "LEAVE"}, 0, t);
+        } else if (screen == 1) {                                   // the board on the table, him above it
+            Px.cellar(g, 160, 40, 170, flicker);
             lamp(g, 160, t);
-            g.drawImage(PixelArt.person(p, t, "think", (t % 4) / 4), 120, 2, 80, 72, null);
-            table(g, 72);
-            Px.box(g, 94, 80, 132, 120);
+            g.drawImage(PixelArt.person(p, t, "think", (t % 4) / 4), 120, 6, 80, 72, null);
+            table(g, 76);
+            Px.rect(g, 94, 82, 132, 112, Px.BLACK);                     // the board in its wooden frame
+            Px.rect(g, 95, 83, 130, 110, Px.WOOD);
+            Px.rect(g, 95, 83, 130, 1, Px.WOOD_LIGHT);
             for (int r = 0; r < 8; r++) {
                 for (int c = 0; c < 8; c++) {
                     boolean dark = (r + c) % 2 == 1;
-                    Px.rect(g, 100 + c * 15, 86 + r * 13, 15, 13, dark ? Px.DBROWN : Px.BONE2);
+                    Px.rect(g, 100 + c * 15, 86 + r * 13, 15, 13, dark ? new Color(92, 56, 40) : new Color(206, 184, 144));
                 }
             }
-            Px.rect(g, 100 + 4 * 15, 86 + 6 * 13, 15, 13, Px.GOLD);           // a selected square
+            Px.rect(g, 100 + 4 * 15, 86 + 6 * 13, 15, 13, new Color(236, 160, 70));   // a chosen square
             for (int r = 0; r < 8; r++) {
                 for (int c = 0; c < 8; c++) {
                     if (!BOARD[r][c].isEmpty()) PixelArt.piece(g, BOARD[r][c], 100 + c * 15 + 8, 86 + r * 13 + 12);
                 }
             }
-            Px.box(g, 16, 204, 288, 32);
-            Px.text(g, "* He is thinking...", 26, 216, Px.WHITE, 1);
-            Px.text(g, "HAND", 238, 84, Px.ORANGE, 1);
-            Px.text(g, "Pawn Surge", 238, 96, Px.WHITE, 1);
-            Px.text(g, "Heavy Armor", 238, 108, Px.WHITE, 1);
-            Px.text(g, "LV 3", 20, 84, Px.WHITE, 1);
-            Px.text(g, "GOLD 64", 20, 96, Px.YELLOW, 1);
-        } else {                                                    // a dealer behind his counter
-            g.drawImage(PixelArt.person(p, t, null, 0), 80, 10, 160, 144, null);
-            Px.rect(g, 40, 148, 240, 10, Px.DBROWN);
-            Px.rect(g, 40, 147, 240, 1, Px.BLACK);
-            Px.box(g, 16, 160, 288, 46);
-            Px.wrap(g, "* " + p.name + " spreads his wares. \"Everything has a price. Even you.\"", 26, 169, 270, Px.WHITE, talk.shown());
-            Px.text(g, "<", 6, 108, Px.WHITE, 2);
-            Px.text(g, ">", 304, 108, Px.WHITE, 2);
-            buttons(g, 1, t);
+            Px.frame(g, 234, 82, 80, 70);                               // your hand
+            Px.text(g, "HAND", 242, 90, Px.EMBER, 1);
+            Px.text(g, "Pawn", 242, 104, Px.CREAM, 1);
+            Px.text(g, " Surge", 242, 114, Px.CREAM, 1);
+            Px.text(g, "Heavy", 242, 128, Px.CREAM, 1);
+            Px.text(g, " Armor", 242, 138, Px.CREAM, 1);
+            status(g);
+            Px.frame(g, 14, 202, 292, 34);
+            Px.plate(g, p.name, 24, 196);
+            Px.text(g, "He is thinking...", 26, 214, Px.ASH, 1);
+        } else {                                                    // a dealer behind his counter, by candlelight
+            Px.cellar(g, 160, 90, 170, flicker);
+            g.drawImage(PixelArt.person(p, t, null, 0), 80, 8, 160, 144, null);
+            Px.rect(g, 30, 146, 260, 1, Px.BLACK);
+            Px.rect(g, 30, 147, 260, 10, Px.WOOD_DARK);
+            Px.rect(g, 30, 147, 260, 1, Px.WOOD);
+            Px.flame(g, 52, 132, t);
+            Px.flame(g, 262, 132, t + 0.3);
+            speech(g, p.name, "He spreads his wares across the counter.", "Everything has a price. Even you.", 162, 46, talk.shown());
+            Px.text(g, "<", 6, 100, Px.CREAM, 2);
+            Px.text(g, ">", 304, 100, Px.CREAM, 2);
+            status(g);
+            Px.cards(g, new String[]{"BUY", "SELL", "TALK", "BACK"}, 0, t);
         }
         g.dispose();
         return img;
@@ -126,7 +142,7 @@ public class PixelPreview extends JPanel {
     public static void main(String[] args) throws Exception {
         if (args.length >= 3) {
             int screen = Integer.parseInt(args[1]) - 1, who = Integer.parseInt(args[2]) - 1;
-            Px.Talk done = new Px.Talk(LINES[Math.min(who, 4)], 0) {
+            Px.Talk done = new Px.Talk(LINES[Math.min(who, 4)][1], 0) {
                 @Override public int shown() { return 999; }
             };
             BufferedImage small = render(screen, who, 0.4, done);
@@ -147,7 +163,8 @@ public class PixelPreview extends JPanel {
             f.addKeyListener(new java.awt.event.KeyAdapter() {
                 @Override public void keyPressed(java.awt.event.KeyEvent e) {
                     p.who = (p.who + 1) % 8;
-                    p.talk = new Px.Talk(LINES[Math.min(p.who, 4)], person(p.who).voice);
+                    String[] l = LINES[Math.min(p.who, 4)];
+                    p.talk = new Px.Talk(l[0] + " " + l[1], person(p.who).voice);
                 }
             });
             f.add(p);
