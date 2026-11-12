@@ -53,10 +53,27 @@ Don't copy Undertale's characters, its heart cursor, or its FIGHT/ACT/ITEM/MERCY
   table, mask); the eight `Person`s; `piece(g, code, x, y)` turned wooden pieces 18 x 28, cached.
 - `PixelPreview.java`: `java PixelPreview` (live window: click = next screen, key = next character) or
   `java PixelPreview out.png SCREEN WHO` (1 facing him, 2 the board, 3 a dealer).
-- To do: the real screens use these (see Status).
+- `PixelGame.java`: **the game.** One JPanel, a `Mode` per screen (MENU, SCORES, NAME, INTRO, FACE,
+  BOARD, LUNGE, SUMMARY, SWAP, SHOP, DRAFT, HAND, CONFIRM, OVER), each with a `drawX` method. Every
+  clickable thing adds a `Hit` while drawn; `choices()` draws the card row (keys: left / right, Enter).
+  `speechBox()` shows `say(...)` lines. Board geometry: squares 22 x 18 at (152, 156). The AI runs in a
+  SwingWorker as before. `java PixelGame out.png SCREEN` saves a picture of a screen (see its `main`).
+- `Lines.java`: what everyone says (greet, talk, hurt, capture, check, win, lose, draw; dealers greet,
+  talk, yes, no), as {narration, speech}.
+- `RoguelikeChessAppSwing.java`: the window (960 x 720) holding one PixelGame. BlueJ: run its `main`.
 
 ## Status
 (newest first)
+- 2026-11-12 (conversion): **the whole game is now the pixel style.** `PixelGame` + `Lines` replace
+  MenuSwing, BoardViewSwing, ShopScene, IntroScene, CutScene; ScenePlayer, SceneClip, FootageLook,
+  BoardArt and the storybook files were deleted (in git history if ever wanted). Flow: menu, name,
+  two-line intro, facing him (PLAY / CARDS / TALK / GIVE UP), board (hand on the right, click to play;
+  promotion and Sniper choices as cards; Esc gives up), his reactions and lines on captures / check,
+  checkmate lunge, summary ledger, lights-out swap after a win, shop with three dealers (< > to turn,
+  wares panel, mystery-pack draft), choosing the hand, game over. Tests pass; every screen was checked
+  as a picture; not yet click-tested through a whole run by the user. The music files (battle.wav,
+  intro.wav) are missing, as before. Ideas next: footsteps / ambience made with Java Sound, a smoother
+  piece slide animation, per-opponent lunge, menu backdrop with a figure in the dark.
 - 2026-11-12 (quality): **quality upgrade done, waiting for the user's verdict.** Canvas 480 x 360,
   `Shade.java` added, all eight characters, the pieces, the wall, lamp, plank table and board redrawn in
   the reference style. Preview layouts rescaled. Next if approved: the conversion listed below (window

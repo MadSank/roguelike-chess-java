@@ -217,8 +217,18 @@ public final class Px {
 
     // ─── The choices: a fan of cards ─────────────────────────────
     /** Choices drawn as cards along the bottom; the chosen one rises with a candle flame over it. */
+    /** Where the choice cards go: {first x, card width, gap}. Cards widen for long labels and pack closer when many. */
+    public static int[] cardLayout(String[] labels) {
+        int n = labels.length, longest = 0;
+        for (String s : labels) longest = Math.max(longest, s.length());
+        int cw = Math.max(84, longest * 6 + 26), gap = n >= 5 ? 6 : 14;
+        if (n * cw + (n - 1) * gap > W - 8) cw = (W - 8 - (n - 1) * gap) / n;
+        return new int[]{(W - (n * cw + (n - 1) * gap)) / 2, cw, gap};
+    }
+
     public static void cards(Graphics2D g, String[] labels, int selected, double t) {
-        int n = labels.length, cw = 84, gap = 14, total = n * cw + (n - 1) * gap, x0 = (W - total) / 2;
+        int[] lay = cardLayout(labels);
+        int n = labels.length, cw = lay[1], gap = lay[2], x0 = lay[0];
         for (int i = 0; i < n; i++) {
             int x = x0 + i * (cw + gap), y = H - 36 - (i == selected ? 3 : 0);
             rect(g, x, y, cw, 30, BLACK);
@@ -384,6 +394,7 @@ public final class Px {
         public final int pitch;
         private final long start;
         private int lastBlip = -1;
+        private boolean skipped;
         private static final int MS_PER_LETTER = 32;
 
         public Talk(String text, int pitch) {
@@ -393,7 +404,13 @@ public final class Px {
         }
 
         /** How many letters are showing now (and blips for new ones). */
+        /** Shows the whole line at once (a click while it is typing). */
+        public void skip() {
+            skipped = true;
+        }
+
         public int shown() {
+            if (skipped) return text.length();
             int n = (int) Math.min(text.length(), (System.currentTimeMillis() - start) / MS_PER_LETTER);
             if (n > lastBlip && n > 0) {
                 char ch = text.charAt(n - 1);
@@ -413,7 +430,7 @@ public final class Px {
 
     /** A tiny square-wave blip (a character's voice), played without waiting. */
     public static synchronized void blip(int pitch) {
-        if (soundBroken) return;
+        if (soundBroken || !AudioPlayer.isSoundEnabled()) return;
         try {
             if (line == null) {
                 AudioFormat f = new AudioFormat(22050, 8, 1, true, false);

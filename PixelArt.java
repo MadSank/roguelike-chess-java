@@ -93,8 +93,24 @@ public final class PixelArt {
 
     /** The person's upper body as a small image (SPRITE_W x SPRITE_H), hands resting at the bottom edge. */
     public static BufferedImage person(Person who, double t, String reaction, double p) {
-        BufferedImage img = new BufferedImage(SPRITE_W, SPRITE_H, BufferedImage.TYPE_INT_ARGB);
         int[] o = pose(t, reaction, p);
+        int beat = (int) Math.floor(t * 3);                             // eye glints change a few times a second
+        String key = who.name + o[0] + "," + o[1] + "," + o[2] + "," + o[3] + "," + beat % 20;
+        BufferedImage img = CACHE.get(key);
+        if (img == null) {
+            img = build(who, (beat % 20) / 3.0, o);
+            CACHE.put(key, img);
+        }
+        return img;
+    }
+
+    /** Recently drawn poses, so a figure is shaded only when it actually changes. */
+    private static final java.util.Map<String, BufferedImage> CACHE = new java.util.LinkedHashMap<String, BufferedImage>(64, 0.75f, true) {
+        @Override protected boolean removeEldestEntry(java.util.Map.Entry<String, BufferedImage> e) { return size() > 160; }
+    };
+
+    private static BufferedImage build(Person who, double t, int[] o) {
+        BufferedImage img = new BufferedImage(SPRITE_W, SPRITE_H, BufferedImage.TYPE_INT_ARGB);
         int sx = o[3], by = o[0], hx = o[1] + o[3], hy = o[2] + o[0];
         Color[] robe = Shade.ramp(who.robe, 5), robeDark = Shade.ramp(who.robe.darker(), 5);
         if (who.hood) {                                                 // a peaked hood, its opening deep in shadow
