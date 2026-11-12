@@ -73,6 +73,18 @@ First person from the player's seat, with mouse look limited to a cone; lean in 
 
 ## Status
 (newest first)
+- 2026-11-12 (dealers): **the three dealers are in Godot, masked, standing round the seat.**
+  - Masks (`worn_masks.py`): card dealer a Venetian bauta, piece dealer a fencing mask, reseller a
+    balaclava. `fit_masks.py` now covers all eight characters; `characters.blend` is fitted.
+  - `export_people.py` exports the dealers too (idle + yes / no; no hand IK for standing figures):
+    `card_dealer.glb`, `piece_dealer.glb`, `reseller.glb`.
+  - `main.gd`: `DEALERS` places them (card left, piece right, reseller behind right), each with a small
+    light; Left / Right arrows turn your head between card / table / piece / resell when not in a round;
+    a shop command turns you to that dealer, who nods (yes) or shakes his head (no).
+  - Checked: one screenshot facing each dealer; `--auto 1` still runs clean. Not checked: the nod /
+    shake in motion; the shop panel still covers the middle of the screen, so the dealer is mostly
+    hidden behind it. **Next for milestone 2: split the shop panel into one small panel per dealer,
+    shown beside him when you face him** (replace `Hud.show_shop` with per-view panels).
 - 2026-11-12 (masks, final direction): the user wants **masks real people wear** (gas mask, plague
   doctor, Anonymous-style, etc.), full-face. The marble / bull / lion scans were replaced.
   - Opponent 1: the scanned Poly Haven gas mask. Opponents 2-5: `tools/blender/worn_masks.py` builds a

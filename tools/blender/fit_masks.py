@@ -7,8 +7,8 @@ Why: the generated human faces don't hold up, so no part of a face may show. Eac
 tools/blender/assets/characters.blend gets
   - a full-face mask of a kind real people wear: opponent 1 a real scanned gas mask (Poly Haven,
     CC0; fetch_assets.py), the others a plague doctor's mask and hat, an old hockey goalie mask, a
-    burlap sack and a welder's helmet (worn_masks.py). Anyone not listed in MASK_FOR keeps the
-    theatre mask, enlarged to reach past the hairline, chin and cheeks.
+    burlap sack and a welder's helmet; the dealers a Venetian bauta, a fencing mask and a balaclava
+    (worn_masks.py). Anyone not listed in MASK_FOR keeps the theatre mask, enlarged.
   - a matte black cowl under it (a close black covering over the front of the head), so eye holes
     and any gap at the rim show only black.
 Hands, neck, ears and hair stay visible: they are what makes the figure read as a person.
@@ -49,6 +49,10 @@ MASK_FOR = {
     "opponent3": {"worn": "hockey", "whole_head": False},
     "opponent4": {"worn": "sack", "whole_head": True},
     "opponent5": {"worn": "welding", "whole_head": False},
+    # The dealers: a gambler's bauta, a fencing mask, a balaclava.
+    "card_dealer": {"worn": "bauta", "whole_head": False},
+    "piece_dealer": {"worn": "fencing", "whole_head": False},
+    "reseller": {"worn": "balaclava", "whole_head": True},
 }
 HAIR_PARTS = ("short", "bob", "afro", "long", "ponytail", "braid", "eyebrow", "eyelash")
 

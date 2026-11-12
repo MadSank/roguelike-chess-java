@@ -6,6 +6,9 @@ Masks that real people wear, built to real-world shapes and sizes (used by fit_m
   sack            a burlap sack over the whole head, tied with rope at the neck, two torn eye holes,
                   a stitched mouth
   welding         a welder's helmet: a curved dark shield with a small glass window
+  bauta           the white Venetian gambler's mask: a blank brow and nose over a jutting, angular jaw
+  fencing         a fencing mask: a dark wire-mesh dome over the face with a padded white bib
+  balaclava       a black knitted hood over the whole head with holes for the eyes and mouth
 
 Everything is in the wearer's "eye frame": metres, x to the wearer's left... (x is sideways), -y is
 forward (out of the face), +z is up, and the origin is on the eye line, 18 mm in front of the nose tip.
@@ -311,7 +314,110 @@ def plague_doctor(name, seed=1):
     return parts
 
 
-BUILDERS = {"plague_doctor": plague_doctor, "hockey": hockey, "sack": sack, "welding": welding}
+def bauta(name, seed=1):
+    def point(u, v):
+        x = -0.088 + 0.176 * u
+        z = -0.15 + 0.255 * v
+        side = abs(x) / 0.088
+        y = -0.016 + 0.1 * side ** 2.2                             # wraps round the cheeks (clear of the cowl)
+        y += 0.03 * max(0.0, (z - 0.05) / 0.055) ** 2              # the brow leans back
+        if -0.045 < z < 0.035:                                      # a sharp, straight nose
+            t = (0.035 - z) / 0.08
+            y -= 0.034 * t * math.exp(-(x / (0.01 + 0.012 * t)) ** 2)
+        for s_ in (-1, 1):                                          # shallow sockets
+            y += 0.008 * math.exp(-(((x - s_ * EYE_X) / 0.024) ** 2 + (z / 0.016) ** 2))
+        if z < -0.04:                                               # the jaw juts out and flares, flat-fronted
+            t = min(1.0, (-0.04 - z) / 0.085)
+            y -= 0.075 * t ** 0.8 * (1 - 0.55 * side ** 2)
+        return Vector((x * (1.0 + 0.12 * max(0.0, (-0.04 - z) / 0.11)), y, z))
+
+    def keep(p):
+        if _eye_hole(p, 0.021, 0.011):
+            return False
+        top = 0.105 - 0.05 * (abs(p.x) / 0.088) ** 2.5             # a rounded top, a square jaw
+        return p.z < top
+    mat = scuffed_texture(name + "_gesso", (0.86, 0.84, 0.78), seed=seed, wear=0.45)
+    mask = _sheet(name, point, 96, 120, mat, keep=keep, thickness=0.004, subsurf=1)
+    _front_uv(mask)
+    return [mask]
+
+
+def mesh_texture(name, size=512):
+    """Fine woven steel wire, seen close: dark, with the wires catching a little light. Tiles."""
+    yy, xx = np.mgrid[0:size, 0:size].astype(np.float32) / size
+    wires = np.maximum(np.abs(np.sin(xx * math.pi * 16)) ** 14, np.abs(np.sin(yy * math.pi * 16)) ** 14)
+    value = 0.012 + 0.16 * wires
+    rgba = np.dstack([value ** (1 / 2.2)] * 3 + [np.ones((size, size), dtype=np.float32)])
+    image = bpy.data.images.new(name, size, size, alpha=False)
+    image.pixels.foreach_set(rgba.astype(np.float32).ravel())
+    image.pack()
+    mat = bpy.data.materials.new(name)
+    mat.use_fake_user = True
+    mat.use_nodes = True
+    nt = mat.node_tree
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = image
+    bsdf = nt.nodes["Principled BSDF"]
+    nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+    bsdf.inputs["Roughness"].default_value = 0.4
+    bsdf.inputs["Metallic"].default_value = 0.6
+    return mat
+
+
+def fencing(name, seed=1):
+    centre, r = Vector((0.0, 0.1, -0.015)), Vector((0.102, 0.145, 0.165))
+
+    def point(u, v):
+        theta, phi = math.radians(-100 + 200 * u), math.radians(-78 + 160 * v)
+        return centre + Vector((r.x * math.sin(theta) * math.cos(phi), -r.y * math.cos(theta) * math.cos(phi),
+                                r.z * math.sin(phi)))
+    dome = _sheet(name, point, 80, 70, mesh_texture(name + "_wire"), uv_scale=(5.0, 4.5), thickness=0.003)
+    # The padded bib under the chin, and the band round the edge of the mesh.
+    cloth = realistic.fabric(name + "_bib", "rough_linen", (0.62, 0.6, 0.55), scale=10.0, sheen=0.0, worn=True)
+
+    def bib_point(u, v):
+        a = math.radians(-78 + 156 * u)
+        z = -0.165 - 0.115 * v
+        rr = 0.092 + 0.05 * v ** 1.3
+        return Vector((rr * math.sin(a), 0.1 - rr * math.cos(a) * 1.05, z))
+    bib = _sheet(name + "_bib", bib_point, 40, 14, cloth, uv_scale=(0.3, 0.12), thickness=0.012, subsurf=1)
+    band = _primitive(name + "_band", "torus", cloth,
+                      Matrix.Translation((0, 0.118, -0.015)) @ Matrix.Rotation(math.radians(80), 4, "X")
+                      @ Matrix.Diagonal((1.0, 1.58, 1.0, 1)),
+                      major_radius=0.1, minor_radius=0.008, major_segments=48, minor_segments=8)
+    return [dome, bib, band]
+
+
+def balaclava(name, seed=1):
+    profile = [(0.142, 0.01), (0.132, 0.05), (0.1, 0.08), (0.04, 0.09), (-0.04, 0.089), (-0.1, 0.08), (-0.145, 0.068),
+               (-0.185, 0.064), (-0.23, 0.07)]
+
+    def radius(z):
+        for (z0, r0), (z1, r1) in zip(profile, profile[1:]):
+            if z1 <= z <= z0:
+                t = (z0 - z) / (z0 - z1)
+                t = t * t * (3 - 2 * t)
+                return r0 + (r1 - r0) * t
+        return profile[-1][1]
+
+    def point(u, v):
+        z = profile[0][0] + (profile[-1][0] - profile[0][0]) * v
+        a = 2 * math.pi * u
+        rr = radius(z)
+        return HEAD + Vector((rr * math.sin(a), -rr * math.cos(a) * 1.17, z))
+
+    def keep(p):
+        if p.y > HEAD.y - 0.03:
+            return True
+        if _eye_hole(p, 0.021, 0.0115, z=0.002):
+            return False
+        return (p.x / 0.027) ** 2 + ((p.z + 0.078) / 0.0105) ** 2 > 1.0       # the mouth
+    knit = realistic.fabric(name + "_knit", "knitted_fleece", (0.022, 0.021, 0.022), scale=16.0, sheen=0.05, worn=False)
+    return [_sheet(name, point, 110, 100, knit, keep=keep, wrap=True, uv_scale=(0.58, 0.37), thickness=0.004)]
+
+
+BUILDERS = {"plague_doctor": plague_doctor, "hockey": hockey, "sack": sack, "welding": welding,
+            "bauta": bauta, "fencing": fencing, "balaclava": balaclava}
 
 
 def build(kind, name, seed=1):

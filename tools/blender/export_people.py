@@ -5,7 +5,8 @@ Exports people from characters.blend as ordinary game models for the Godot proje
     "C:\\Program Files\\Blender Foundation\\Blender 5.2\\blender.exe" -b --factory-startup -P tools\\blender\\export_people.py -- opponent1[,opponent2,...]
 
 Each becomes one skeleton with skinned meshes, plain image-textured materials and a baked, looping
-"idle" animation plus the reactions (think, capture, hurt, check, win, lose), seated as built: in Godot put it 1 m beyond the table (z = -1), unrotated.
+"idle" animation plus reactions (opponents: think, capture, hurt, check, win, lose; the standing
+dealers card_dealer, piece_dealer, reseller: yes, no). Opponents are seated as built: in Godot put it 1 m beyond the table (z = -1), unrotated.
 
 What has to change on the way out of Blender:
   - MPFB's helper geometry and shape keys go (modifiers can't be applied over shape keys)
@@ -28,6 +29,7 @@ import scene_kit as kit  # noqa: E402
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 OUT = os.path.join(ROOT, "godot", "assets")
 REACTIONS = ["think", "capture", "hurt", "check", "win", "lose"]
+DEALER_REACTIONS = ["yes", "no"]
 HAIR_WORDS = ("hair", "brow", "lash", "short", "bob", "afro", "long", "ponytail", "braid")
 
 
@@ -246,12 +248,14 @@ def character(name):
     # The idle again, on the new rest pose, hands planted.
     for a in list(bpy.data.actions):
         bpy.data.actions.remove(a)
-    realistic.plant_hands(rig)
+    seated = name.startswith("opponent")
+    if seated:
+        realistic.plant_hands(rig)
     realistic.animate(rig, rig["seed"], rig["energy"])
     idle = bpy.data.actions[rig["idle_action"]]
     # The reactions too (each is the idle plus a move; "think" lasts a whole idle loop so it can loop).
     clips = [("idle", idle, realistic.IDLE_FRAMES)]
-    for reaction in REACTIONS:
+    for reaction in (REACTIONS if seated else DEALER_REACTIONS):
         realistic.react(rig, reaction)
         clips.append((reaction, rig.animation_data.action, realistic.reaction_frames(reaction)))
     rig.animation_data.action = None

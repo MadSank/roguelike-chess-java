@@ -10,6 +10,13 @@ const SEAT := Vector3(0.0, 1.15, 0.95)            ## the player's eyes when sitt
 const LOOK_OPPONENT := Vector3(0.0, 1.12, -1.0)
 const LEAN := Vector3(0.0, 1.27, 0.5)             ## leaning in over the board to play
 const LOOK_BOARD := Vector3(0.0, 0.78, -0.02)
+## The three dealers stand around your seat: model file, where they stand, and a light to find them by.
+const DEALERS := {
+	"card": {"file": "card_dealer", "at": Vector3(-1.55, 0.0, 0.9), "glow": Color(1.0, 0.6, 0.3)},
+	"piece": {"file": "piece_dealer", "at": Vector3(1.55, 0.0, 0.9), "glow": Color(1.0, 0.65, 0.35)},
+	"resell": {"file": "reseller", "at": Vector3(0.95, 0.0, 2.45), "glow": Color(1.0, 0.4, 0.15)},
+}
+const VIEWS := ["card", "table", "piece", "resell"]       ## what you can turn to face, left to right
 
 var board: Board
 var hud: Hud
@@ -20,6 +27,8 @@ var post: ShaderMaterial
 var opponent: Node3D
 var _anim: AnimationPlayer
 var _seated := 0
+var _dealers: Dictionary = {}     # view name -> {node, anim}
+var _view := "table"
 var _thinking := false
 
 var _cam_pos := SEAT
@@ -72,6 +81,7 @@ func _build_world() -> void:
 		board_model.rotate_y(PI / 2)          # so a1 (your left corner) is a dark square
 
 	_seat_opponent(1)
+	_place_dealers()
 	_set_thinking(false)
 
 	var env := Environment.new()
@@ -248,11 +258,57 @@ func _unhandled_input(event: InputEvent) -> void:
 		_sit_back(_cam_pos == LEAN)       # right click: sit back to look at him, or lean in again
 	elif event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 		get_tree().quit()
+	elif event is InputEventKey and event.pressed and (event.keycode == KEY_LEFT or event.keycode == KEY_RIGHT):
+		# Left / right: turn to the next dealer round your seat (not while leaning over the board in a round).
+		if Rules.state.get("phase", "MENU") != "PLAYING":
+			var i := VIEWS.find(_view) + (1 if event.keycode == KEY_RIGHT else -1)
+			_turn_to(VIEWS[clampi(i, 0, VIEWS.size() - 1)])
 
 
 func _sit_back(back: bool) -> void:
+	_view = "table"
 	_cam_pos = SEAT if back else LEAN
 	_cam_look = LOOK_OPPONENT if back else LOOK_BOARD
+
+
+## Stands each dealer (if exported) at his place, turned toward your seat, breathing.
+func _place_dealers() -> void:
+	for view in DEALERS:
+		var info: Dictionary = DEALERS[view]
+		var path := "res://assets/%s.glb" % info["file"]
+		if not ResourceLoader.exists(path):
+			continue
+		var dealer := (load(path) as PackedScene).instantiate() as Node3D
+		var at: Vector3 = info["at"]
+		dealer.position = at
+		dealer.rotation.y = atan2(SEAT.x - at.x, SEAT.z - at.z)      # the models face +Z
+		add_child(dealer)
+		var anim := dealer.find_child("AnimationPlayer", true, false) as AnimationPlayer
+		if anim != null and anim.has_animation("idle"):
+			anim.get_animation("idle").loop_mode = Animation.LOOP_LINEAR
+			anim.play("idle")
+			anim.animation_finished.connect(func(_n): anim.play("idle", 0.4))
+		_dealers[view] = {"node": dealer, "anim": anim}
+		var toward := (SEAT - at).normalized()
+		_point(at + toward * 0.7 + Vector3(0, 1.75, 0), info["glow"], 0.5, 2.4, true)
+
+
+## Turns your head to face a dealer or back to the table ("card", "table", "piece", "resell").
+func _turn_to(view: String) -> void:
+	if view == "table" or not _dealers.has(view):
+		_sit_back(true)
+		return
+	_view = view
+	_cam_pos = SEAT
+	_cam_look = (DEALERS[view]["at"] as Vector3) + Vector3(0, 1.52, 0)
+
+
+## The dealer you are facing nods ("yes") or shakes his head ("no").
+func _dealer_react(reaction: String) -> void:
+	if _dealers.has(_view):
+		var anim: AnimationPlayer = _dealers[_view]["anim"]
+		if anim != null and anim.has_animation(reaction):
+			anim.play(reaction, 0.25)
 
 
 # ─── The run ─────────────────────────────────────────────────────────────────
@@ -334,6 +390,11 @@ func _on_answer(command: String, state: Dictionary) -> void:
 	else:
 		board.show_state({})
 		hud.show_shop(state)
+		# A deal or a refusal: you turn to that dealer, and he nods or shakes his head.
+		var whose := {"buy": "piece", "buycard": "card", "openpack": "card", "draft": "card", "sell": "resell", "sellcard": "resell"}
+		if whose.has(word):
+			_turn_to(whose[word])
+			_dealer_react("yes" if state.get("ok", true) else "no")
 
 
 func _on_continue() -> void:
@@ -436,6 +497,9 @@ func _take_shot(path: String, demo: bool) -> void:
 			# Just the room, seen from the seat; --seat N and --react NAME pick who sits there and what he does.
 			if args.has("--seat"):
 				_seat_opponent(int(args[args.find("--seat") + 1]))
+			if args.has("--face"):
+				_turn_to(args[args.find("--face") + 1])
+				await get_tree().create_timer(2.0).timeout
 			if _anim != null:
 				print("ANIMS ", _anim.get_animation_list())
 			if args.has("--react"):
