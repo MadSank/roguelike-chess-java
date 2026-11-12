@@ -73,6 +73,17 @@ First person from the player's seat, with mouse look limited to a cone; lean in 
 
 ## Status
 (newest first)
+- 2026-11-12 (shop): **the shop is now the three dealers.** `Hud.show_shop(state, view)` draws one
+  panel at the right of the screen for the view you face: "table" (what the level needs, your hand),
+  "piece" (buy pieces), "card" (cards on offer, mystery pack and draft), "resell" (sell pieces and
+  cards). A bar along the bottom turns left / right (also the arrow keys) and holds Sit down; Give up
+  is bottom right. `main.gd` `_on_turn` moves the camera and redraws; a deal turns you to that dealer.
+  Checked: a screenshot of each of the four views with sample numbers
+  (`--shot x.png --panel shop --face card|piece|resell|table`), and `--auto 8`, which bought pawns and
+  sat down repeatedly without errors. Not checked: buying or selling cards and the mystery pack inside
+  Godot (auto-play only buys pawns); text may be small at 1600x900.
+  Next (milestone 2 remainder): choosing your hand, promotion and snipe choices, card overlays on the
+  board, a leaderboard screen. Then milestone 3 (swap in the dark, lunge, intro, sound).
 - 2026-11-12 (dealers): **the three dealers are in Godot, masked, standing round the seat.**
   - Masks (`worn_masks.py`): card dealer a Venetian bauta, piece dealer a fencing mask, reseller a
     balaclava. `fit_masks.py` now covers all eight characters; `characters.blend` is fitted.

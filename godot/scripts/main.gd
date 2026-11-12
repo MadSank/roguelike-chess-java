@@ -54,6 +54,7 @@ func _ready() -> void:
 	hud.continue_pressed.connect(_on_continue)
 	hud.shop_command.connect(func(c: String): Rules.send(c))
 	hud.sit_down.connect(_on_sit_down)
+	hud.turn.connect(_on_turn)
 	hud.quit_to_menu.connect(func(): Rules.send("abandon"); Rules.send("menu"))
 	Rules.answered.connect(_on_answer)
 	Rules.failed.connect(func(m: String): hud.status(m))
@@ -260,7 +261,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_tree().quit()
 	elif event is InputEventKey and event.pressed and (event.keycode == KEY_LEFT or event.keycode == KEY_RIGHT):
 		# Left / right: turn to the next dealer round your seat (not while leaning over the board in a round).
-		if Rules.state.get("phase", "MENU") != "PLAYING":
+		if Rules.state.get("phase", "MENU") == "SHOP" and hud.overlay_kind == "shop":
+			_on_turn(1 if event.keycode == KEY_RIGHT else -1)
+		elif Rules.state.get("phase", "MENU") != "PLAYING":
 			var i := VIEWS.find(_view) + (1 if event.keycode == KEY_RIGHT else -1)
 			_turn_to(VIEWS[clampi(i, 0, VIEWS.size() - 1)])
 
@@ -290,7 +293,7 @@ func _place_dealers() -> void:
 			anim.animation_finished.connect(func(_n): anim.play("idle", 0.4))
 		_dealers[view] = {"node": dealer, "anim": anim}
 		var toward := (SEAT - at).normalized()
-		_point(at + toward * 0.7 + Vector3(0, 1.75, 0), info["glow"], 0.5, 2.4, true)
+		_point(at + toward * 0.7 + Vector3(0, 1.75, 0), info["glow"], 1.1 if view == "resell" else 0.5, 2.6, true)
 
 
 ## Turns your head to face a dealer or back to the table ("card", "table", "piece", "resell").
@@ -379,7 +382,8 @@ func _on_answer(command: String, state: Dictionary) -> void:
 	# SHOP or GAME_OVER: first the round's summary (if one is waiting), then the dealers.
 	board.enabled = false
 	hud.status("")
-	_sit_back(true)
+	if hud.overlay_kind != "shop":
+		_sit_back(true)
 	if word == "finish" and state.has("summary"):
 		_summary_due = false
 		if state["summary"].get("result", "") == "BLACK_WINS":
@@ -389,12 +393,12 @@ func _on_answer(command: String, state: Dictionary) -> void:
 		Rules.send("menu")
 	else:
 		board.show_state({})
-		hud.show_shop(state)
 		# A deal or a refusal: you turn to that dealer, and he nods or shakes his head.
 		var whose := {"buy": "piece", "buycard": "card", "openpack": "card", "draft": "card", "sell": "resell", "sellcard": "resell"}
 		if whose.has(word):
 			_turn_to(whose[word])
 			_dealer_react("yes" if state.get("ok", true) else "no")
+		hud.show_shop(state, _view)
 
 
 func _on_continue() -> void:
@@ -403,7 +407,16 @@ func _on_continue() -> void:
 		Rules.send("menu")
 	else:
 		board.show_state({})
-		hud.show_shop(state)
+		_sit_back(true)
+		hud.show_shop(state, _view)
+
+
+## In the shop: turn to the dealer on your left (-1) or right (+1) and show his panel.
+func _on_turn(step: int) -> void:
+	if Rules.state.get("phase", "MENU") != "SHOP" or hud.overlay_kind != "shop":
+		return
+	_turn_to(VIEWS[clampi(VIEWS.find(_view) + step, 0, VIEWS.size() - 1)])
+	hud.show_shop(Rules.state, _view)
 
 
 func _on_sit_down() -> void:
@@ -493,7 +506,12 @@ func _take_shot(path: String, demo: bool) -> void:
 				"stash": [card2, card]}}
 		hud.close_overlay()
 		hud.show_run(sample, false)
-		if args[args.find("--panel") + 1] == "none":
+		if args[args.find("--panel") + 1] == "shop" and args.has("--face"):
+			# The shop as you see it facing one dealer: --panel shop --face card|piece|resell|table
+			_turn_to(args[args.find("--face") + 1])
+			await get_tree().create_timer(2.0).timeout
+			hud.show_shop(sample, _view)
+		elif args[args.find("--panel") + 1] == "none":
 			# Just the room, seen from the seat; --seat N and --react NAME pick who sits there and what he does.
 			if args.has("--seat"):
 				_seat_opponent(int(args[args.find("--seat") + 1]))

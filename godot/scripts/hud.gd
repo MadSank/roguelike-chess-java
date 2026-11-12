@@ -10,6 +10,7 @@ signal continue_pressed
 signal shop_command(command: String)
 signal sit_down
 signal quit_to_menu
+signal turn(step: int)          ## in the shop: turn to the next dealer left (-1) or right (+1)
 
 const BONE := Color(0.86, 0.82, 0.74)
 const DIM := Color(0.55, 0.52, 0.48)
@@ -281,82 +282,126 @@ func show_summary(s: Dictionary) -> void:
 	overlay_kind = "summary"
 
 
-func show_shop(state: Dictionary) -> void:
+## The shop is the three dealers: you turn to one and his panel is beside him.
+## view: "table" (what the level needs, and sitting down), "piece", "card" or "resell".
+func show_shop(state: Dictionary, view: String = "table") -> void:
 	var shop: Dictionary = state.get("shop", {})
 	var gold := int(state.get("gold", 0))
-	var p := panel(Color(0.35, 0.1, 0.1), 24)
+	close_overlay()
+	var holder := Control.new()
+	holder.set_anchors_preset(Control.PRESET_FULL_RECT)
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(holder)
+	_overlay = holder
+	overlay_kind = "shop"
+
+	# The dealer's own panel, to the right of where he stands in the picture.
+	var p := panel(Color(0.35, 0.1, 0.1), 20)
 	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 14)
+	v.add_theme_constant_override("separation", 10)
 	p.add_child(v)
-	v.add_child(text("Before level %d" % int(state.get("level", 1)), 34, BONE))
-	var need := text("You need %d material. You have %d.   Pawns allowed: %d" % [int(state.get("requirement", 0)),
-		int(shop.get("material", 0)), int(shop.get("pawnCap", 0))], 16, BONE if shop.get("meets", false) else CRIMSON.lightened(0.35))
-	v.add_child(need)
-	var cols := HBoxContainer.new()
-	cols.add_theme_constant_override("separation", 26)
-	v.add_child(cols)
+	if view == "piece":
+		v.add_child(text("THE PIECE DEALER", 22, BONE))
+		v.add_child(text("Pawns allowed: %d" % int(shop.get("pawnCap", 0)), 14, DIM))
+		for item in shop.get("pieces", []):
+			var row := HBoxContainer.new()
+			row.add_theme_constant_override("separation", 10)
+			var name_label := text("%s  x%d" % [item["type"], int(item["owned"])], 17, BONE)
+			name_label.custom_minimum_size.x = 150
+			row.add_child(name_label)
+			var kind: String = item["type"]
+			var buy := button("Buy  %d" % int(item["price"]), func(): shop_command.emit("buy " + kind), CRIMSON, 14)
+			buy.disabled = gold < int(item["price"])
+			row.add_child(buy)
+			v.add_child(row)
+	elif view == "card":
+		v.add_child(text("THE CARD DEALER", 22, BONE))
+		var cards: Array = shop.get("offer", [])
+		if cards.is_empty():
+			v.add_child(text("Nothing left on the table.", 14, DIM))
+		for i in cards.size():
+			var price := int(cards[i].get("price", 0))
+			v.add_child(_card(cards[i], "Buy  %d" % price, func(): shop_command.emit("buycard %d" % i), gold >= price, 300))
+		if shop.get("packOpened", false) and not (shop.get("pack", []) as Array).is_empty():
+			v.add_child(text("Take one from the pack:", 15, GOLD))
+			var pack: Array = shop.get("pack", [])
+			for i in pack.size():
+				v.add_child(_card(pack[i], "Take", func(): shop_command.emit("draft %d" % i), true, 300))
+		elif not shop.get("packOpened", false):
+			var open := button("Mystery pack   %d" % int(shop.get("packPrice", 0)), func(): shop_command.emit("openpack"), Color(0.5, 0.25, 0.7), 15)
+			open.disabled = gold < int(shop.get("packPrice", 0))
+			v.add_child(open)
+	elif view == "resell":
+		v.add_child(text("THE RESELLER", 22, BONE))
+		v.add_child(text("He pays half.", 14, DIM))
+		for item in shop.get("pieces", []):
+			if int(item["owned"]) <= 0:
+				continue
+			var row := HBoxContainer.new()
+			row.add_theme_constant_override("separation", 10)
+			var name_label := text("%s  x%d" % [item["type"], int(item["owned"])], 16, BONE)
+			name_label.custom_minimum_size.x = 170
+			row.add_child(name_label)
+			var kind: String = item["type"]
+			row.add_child(button("Sell  +%d" % int(item["sell"]), func(): shop_command.emit("sell " + kind), GOLD.darkened(0.2), 13))
+			v.add_child(row)
+		var stash: Array = shop.get("stash", [])
+		for i in stash.size():
+			var row := HBoxContainer.new()
+			row.add_theme_constant_override("separation", 10)
+			var label := text(stash[i].get("name", ""), 15, RARITY.get(stash[i].get("rarity", "COMMON"), DIM))
+			label.custom_minimum_size.x = 170
+			row.add_child(label)
+			row.add_child(button("Sell  +%d" % int(stash[i].get("price", 0)), func(): shop_command.emit("sellcard %d" % i), GOLD.darkened(0.2), 13))
+			v.add_child(row)
+	else:
+		v.add_child(text("Before level %d" % int(state.get("level", 1)), 30, BONE))
+		v.add_child(text("He will not play you with less than %d material.\nYou have %d." % [int(state.get("requirement", 0)),
+			int(shop.get("material", 0))], 16, BONE if shop.get("meets", false) else CRIMSON.lightened(0.35)))
+		var stash: Array = shop.get("stash", [])
+		var hand := mini(stash.size(), int(state.get("handSize", 5)))
+		if hand > 0:
+			var names: Array[String] = []
+			for i in hand:
+				names.append(stash[i].get("name", ""))
+			var take := text("Your hand: " + ", ".join(PackedStringArray(names)), 14, DIM)
+			take.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			take.custom_minimum_size.x = 300
+			v.add_child(take)
+		v.add_child(text("The dealers stand around you.", 14, DIM))
+	p.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
+	p.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	p.grow_vertical = Control.GROW_DIRECTION_BOTH
+	p.position.x -= 60
+	holder.add_child(p)
 
-	# Pieces: buy and sell.
-	var pieces := VBoxContainer.new()
-	pieces.add_child(text("THE PIECE DEALER", 14, CRIMSON.lightened(0.2)))
-	for item in shop.get("pieces", []):
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 8)
-		var name_label := text("%s  x%d" % [item["type"], int(item["owned"])], 16, BONE)
-		name_label.custom_minimum_size.x = 130
-		row.add_child(name_label)
-		var kind: String = item["type"]
-		var buy := button("Buy %d" % int(item["price"]), func(): shop_command.emit("buy " + kind), CRIMSON, 13)
-		buy.disabled = gold < int(item["price"])
-		row.add_child(buy)
-		var sell := button("Sell +%d" % int(item["sell"]), func(): shop_command.emit("sell " + kind), GOLD.darkened(0.2), 13)
-		sell.disabled = int(item["owned"]) <= 0
-		row.add_child(sell)
-		pieces.add_child(row)
-	cols.add_child(pieces)
-
-	# Cards on offer.
-	var offer := VBoxContainer.new()
-	offer.add_theme_constant_override("separation", 8)
-	offer.add_child(text("THE CARD DEALER", 14, CRIMSON.lightened(0.2)))
-	var cards: Array = shop.get("offer", [])
-	for i in cards.size():
-		var price := int(cards[i].get("price", 0))
-		offer.add_child(_card(cards[i], "Buy %d" % price, func(): shop_command.emit("buycard %d" % i), gold >= price, 260))
-	if shop.get("packOpened", false) and not (shop.get("pack", []) as Array).is_empty():
-		offer.add_child(text("Pick one from the pack:", 14, GOLD))
-		var pack: Array = shop.get("pack", [])
-		for i in pack.size():
-			offer.add_child(_card(pack[i], "Take", func(): shop_command.emit("draft %d" % i), true, 260))
-	elif not shop.get("packOpened", false):
-		var open := button("Mystery pack  %d" % int(shop.get("packPrice", 0)), func(): shop_command.emit("openpack"), Color(0.5, 0.25, 0.7), 14)
-		open.disabled = gold < int(shop.get("packPrice", 0))
-		offer.add_child(open)
-	cols.add_child(offer)
-
-	# The stash: what you own (sell here). The first cards up to your hand size come with you.
-	var stash_col := VBoxContainer.new()
-	stash_col.add_theme_constant_override("separation", 6)
-	stash_col.add_child(text("YOUR CARDS  (hand of %d)" % int(state.get("handSize", 5)), 14, CRIMSON.lightened(0.2)))
-	var stash: Array = shop.get("stash", [])
-	if stash.is_empty():
-		stash_col.add_child(text("None yet.", 14, DIM))
-	for i in stash.size():
-		var row := HBoxContainer.new()
-		var label := text(stash[i].get("name", ""), 15, BONE if i < int(state.get("handSize", 5)) else DIM)
-		label.custom_minimum_size.x = 170
-		row.add_child(label)
-		row.add_child(button("Sell +%d" % int(stash[i].get("price", 0)), func(): shop_command.emit("sellcard %d" % i), GOLD.darkened(0.2), 12))
-		stash_col.add_child(row)
-	cols.add_child(stash_col)
-
-	var foot := HBoxContainer.new()
-	foot.alignment = BoxContainer.ALIGNMENT_END
-	foot.add_theme_constant_override("separation", 12)
-	foot.add_child(button("Give up", func(): quit_to_menu.emit(), Color(0.4, 0.4, 0.4), 15))
+	# Along the bottom: turn left, sit down, turn right.
+	var views := ["card", "table", "piece", "resell"]
+	var names := {"card": "Card dealer", "table": "The table", "piece": "Piece dealer", "resell": "Reseller"}
+	var at := views.find(view)
+	var bar := HBoxContainer.new()
+	bar.add_theme_constant_override("separation", 16)
+	bar.alignment = BoxContainer.ALIGNMENT_CENTER
+	var left := button("<  " + (names[views[at - 1]] if at > 0 else ""), func(): turn.emit(-1), Color(0.45, 0.42, 0.4), 16)
+	left.disabled = at <= 0
+	left.custom_minimum_size.x = 190
+	bar.add_child(left)
 	var sit := button("Sit down" if shop.get("meets", false) else "Not enough material", func(): sit_down.emit(), CRIMSON, 20)
 	sit.disabled = not shop.get("meets", false)
-	foot.add_child(sit)
-	v.add_child(foot)
-	_open(p)
-	overlay_kind = "shop"
+	sit.custom_minimum_size.x = 260
+	bar.add_child(sit)
+	var right := button((names[views[at + 1]] if at < views.size() - 1 else "") + "  >", func(): turn.emit(1), Color(0.45, 0.42, 0.4), 16)
+	right.disabled = at >= views.size() - 1
+	right.custom_minimum_size.x = 190
+	bar.add_child(right)
+	bar.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	bar.position.y -= 40
+	holder.add_child(bar)
+	var leave := button("Give up", func(): quit_to_menu.emit(), Color(0.4, 0.4, 0.4), 13)
+	leave.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	leave.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	leave.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	leave.position -= Vector2(30, 30)
+	holder.add_child(leave)
