@@ -59,12 +59,19 @@ public class PixelGame extends JPanel {
     private Move snipeMove, plainMove;
     private final List<Object[]> toasts = new ArrayList<>();
     private Card hoverCard;
+    /** The last move, gliding: {from row, from col, to row, to col, taken row, taken col}, the piece, what it took. */
+    private int[] slide;
+    private String slideCode, slideTaken;
+    private boolean slideShot;
+    private double slideStart = -10;
+    private static final double SLIDE = 0.2;
 
     // ─── Other screens ──────────────────────────────────────────
     private final StringBuilder name = new StringBuilder();
     private int introStep;
     private RunController.RoundSummary summary;
     private double swapStart, lungeStart;
+    private int lungeWho;
     private int swapFrom, swapTo;
     private int dealer = 1;
     private List<Card> stash = new ArrayList<>();
@@ -202,7 +209,7 @@ public class PixelGame extends JPanel {
         if (k == KeyEvent.VK_ENTER || (k == KeyEvent.VK_SPACE && mode != Mode.NAME)) {
             if (talk != null && !talk.done() && mode != Mode.NAME) talk.skip();
             else if (mode == Mode.INTRO) nextIntro();
-            else if (mode == Mode.SWAP) { if (now() - swapStart > 1.6) enterShop(); }
+            else if (mode == Mode.SWAP) { if (now() - swapStart > 3.7) enterShop(); }
             else if (cardActions != null && choice < cardActions.length) cardActions[choice].run();
         }
         if (k == KeyEvent.VK_ESCAPE && (mode == Mode.BOARD || mode == Mode.FACE) && !roundEnding) askGiveUp();
@@ -298,13 +305,18 @@ public class PixelGame extends JPanel {
     // ─── Menu, scores, name, intro ──────────────────────────────
     private void drawMenu(Graphics2D g, double t) {
         Px.cellar(g, 240, 110, 260, flicker(t));
+        // Someone sits in the dark past the lamp; the lamp stutters and it is someone else.
+        double phase = t % 9;
+        boolean out = phase < 0.45 && Math.sin(phase * 55) > -0.3;
+        if (!out) g.drawImage(inTheDark(PixelArt.person(PixelArt.OPPONENTS[(int) (t / 9) % 5], t, null, 0)), (Px.W - PixelArt.SPRITE_W) / 2, 84, null);
+        else Px.rect(g, 0, 0, Px.W, Px.H, new Color(4, 2, 6, 150));
         lamp(g, 240, t);
-        Px.centred(g, "ASHES", 242, 62, Px.DRED, 6);
-        Px.centred(g, "ASHES", 240, 60, Px.EMBER, 6);
-        Px.centred(g, "of the board", 240, 112, Px.CREAM, 1);
+        Px.centred(g, "ASHES", 242, 32, Px.DRED, 6);
+        Px.centred(g, "ASHES", 240, 30, Px.EMBER, 6);
+        Px.centred(g, "of the board", 240, 74, Px.CREAM, 1);
         table(g, 90, 214, 300, 16);
-        PixelArt.piece(g, "wK", 200, 222);
-        PixelArt.piece(g, "bK", 280, 222);
+        PixelArt.piece(g, "wK", 160, 222);
+        PixelArt.piece(g, "bK", 320, 222);
         Px.flame(g, 237, 205, t);
         Px.centred(g, "Arrows and Enter, or the mouse.", 240, 300, Px.ASH, 1);
         choices(g, new String[]{"NEW RUN", "SCORES", AudioPlayer.isSoundEnabled() ? "SOUND ON" : "SOUND OFF", "LEAVE"}, new Runnable[]{
@@ -312,6 +324,27 @@ public class PixelGame extends JPanel {
             () -> setMode(Mode.SCORES, 0),
             () -> AudioPlayer.setSoundEnabled(!AudioPlayer.isSoundEnabled()),
             () -> System.exit(0)}, t);
+    }
+
+    private final java.util.Map<BufferedImage, BufferedImage> dark = new java.util.LinkedHashMap<BufferedImage, BufferedImage>(32, 0.75f, true) {
+        @Override protected boolean removeEldestEntry(java.util.Map.Entry<BufferedImage, BufferedImage> e) { return size() > 60; }
+    };
+
+    /** A figure sunk into shadow: only a faint purple shape and the glint of the eyes are left. */
+    private BufferedImage inTheDark(BufferedImage src) {
+        return dark.computeIfAbsent(src, k -> {
+            BufferedImage d = new BufferedImage(src.getWidth(), src.getHeight(), BufferedImage.TYPE_INT_ARGB);
+            for (int y = 0; y < src.getHeight(); y++) {
+                for (int x = 0; x < src.getWidth(); x++) {
+                    int argb = src.getRGB(x, y);
+                    if ((argb >>> 24) == 0) continue;
+                    Color c = new Color(argb);
+                    boolean glint = c.getRed() > 235 && c.getGreen() > 210;
+                    d.setRGB(x, y, glint ? argb : Shade.mix(c, new Color(12, 7, 18), 0.7 - 0.12 * (1 - y / (double) src.getHeight())).getRGB());
+                }
+            }
+            return d;
+        });
     }
 
     private void drawScores(Graphics2D g, double t) {
@@ -339,6 +372,7 @@ public class PixelGame extends JPanel {
         run.startNewRun(n.isEmpty() ? "Anonymous" : n);
         introStep = 0;
         setMode(Mode.INTRO, 0);
+        Music.steps(9, 0.4, 0.55, 0.45, 0.9);                         // down the stairs
         say(null, new String[]{"Stone steps lead down into a cellar. The air tastes of smoke.", ""}, 160);
     }
 
@@ -371,6 +405,7 @@ public class PixelGame extends JPanel {
         setMode(Mode.FACE, 0);
         sayOpp(Lines.greet(run.getOpponent() - 1));
         Music.tension(0);
+        Music.later("chair", 0.05, 0.7);                              // you sit down
     }
 
     private void drawFace(Graphics2D g, double t) {
@@ -457,10 +492,35 @@ public class PixelGame extends JPanel {
                 Px.rect(g, x, y, 2, 2, Px.EMBER);
             }
         }
+        double se = t - slideStart, sk = Math.min(1, se / SLIDE);
+        boolean sliding = slide != null && se < SLIDE && !slideShot;
         for (int r = 0; r < 8; r++) {
             for (int c = 0; c < 8; c++) {
                 Piece p = s.board[r][c];
+                if (slide != null && se < SLIDE * 0.85 && slideTaken != null && r == slide[4] && c == slide[5]) {
+                    PixelArt.piece(g, slideTaken, BX + c * SW + SW / 2, BY + r * SH + SH - 3);   // still there until it's hit
+                    continue;
+                }
+                if (sliding && r == slide[2] && c == slide[3]) continue;
                 if (p != null) PixelArt.piece(g, code(p), BX + c * SW + SW / 2, BY + r * SH + SH - 3);
+            }
+        }
+        if (slide != null && slideShot && se < SLIDE * 1.5) {         // a sniper's shot: a line of embers
+            int x0 = BX + slide[1] * SW + SW / 2, y0 = BY + slide[0] * SH + SH / 2 - 8, x1 = BX + slide[5] * SW + SW / 2, y1 = BY + slide[4] * SH + SH / 2 - 4;
+            for (int i = 0; i <= 20; i++) if ((i + (int) (se * 60)) % 3 != 0) Px.rect(g, x0 + (x1 - x0) * i / 20, y0 + (y1 - y0) * i / 20, 2, 2, i % 2 == 0 ? Px.EMBER : Px.YELLOW);
+        }
+        if (sliding) {                                                // the moving piece, eased, lifted in a little arc
+            double e = sk * sk * (3 - 2 * sk), lift = Math.sin(Math.PI * sk) * (slideCode.charAt(1) == 'N' ? 10 : 5);
+            int x = (int) Math.round(BX + (slide[1] + (slide[3] - slide[1]) * e) * SW + SW / 2.0);
+            int y = (int) Math.round(BY + (slide[0] + (slide[2] - slide[0]) * e) * SH + SH - 3 - lift);
+            PixelArt.piece(g, slideCode, x, y);
+        }
+        if (slide != null && slideTaken != null && se > SLIDE * 0.85 && se < SLIDE + 0.3) {    // a puff of dust where it fell
+            double d = (se - SLIDE * 0.85) / 0.45;
+            int cx = BX + slide[5] * SW + SW / 2, cy = BY + slide[4] * SH + SH - 4;
+            for (int i = 0; i < 10; i++) {
+                double a = i * 0.63 + 0.3, rr = 3 + d * 11;
+                Px.dot(g, cx + (int) (Math.cos(a) * rr), cy - (int) (Math.abs(Math.sin(a)) * rr * 0.6) - (int) (d * 4), d < 0.6 ? Px.ASH : Px.DIM);
             }
         }
         hits.add(new Hit(new Rectangle(BX, BY, SW * 8, SH * 8), () -> boardClick((lastClick.y - BY) / SH, (lastClick.x - BX) / SW)));
@@ -522,6 +582,36 @@ public class PixelGame extends JPanel {
         }
     }
 
+    /** The board as piece codes, taken just before a move, so the move can be animated. */
+    private String[][] snapshot() {
+        Piece[][] b = run.getRoundState().board;
+        String[][] out = new String[8][8];
+        for (int r = 0; r < 8; r++) for (int c = 0; c < 8; c++) out[r][c] = b[r][c] == null ? null : code(b[r][c]);
+        return out;
+    }
+
+    /** Starts the glide for a move just played; finds what it took by comparing the board before and after. */
+    private void startSlide(Move m, String[][] before) {
+        String mover = before[m.fromRow][m.fromCol];
+        if (mover == null) return;
+        Piece[][] after = run.getRoundState().board;
+        int kr = -1, kc = -1;
+        for (int r = 0; r < 8 && kr < 0; r++) {
+            for (int c = 0; c < 8; c++) {
+                String was = before[r][c];
+                if (was == null || was.charAt(0) == mover.charAt(0)) continue;
+                Piece now = after[r][c];
+                if (now == null || now.isWhite() == (mover.charAt(0) == 'w')) { kr = r; kc = c; break; }
+            }
+        }
+        slideShot = m.isSniperShot;
+        int tr = slideShot ? m.fromRow : m.toRow, tc = slideShot ? m.fromCol : m.toCol;
+        slide = new int[]{m.fromRow, m.fromCol, tr, tc, kr, kc};
+        slideCode = mover;
+        slideTaken = kr >= 0 ? before[kr][kc] : null;
+        slideStart = now();
+    }
+
     private void outline(Graphics2D g, int r, int c, Color col) {
         int x = BX + c * SW, y = BY + r * SH;
         Px.rect(g, x, y, SW, 1, col);
@@ -543,6 +633,7 @@ public class PixelGame extends JPanel {
     }
 
     private void clearSelection() {
+        if (mode != Mode.BOARD) slide = null;
         selRow = selCol = -1;
         legal = new ArrayList<>();
         promotions = null;
@@ -613,13 +704,14 @@ public class PixelGame extends JPanel {
 
     private void playerMove(Move move) {
         if (aiThinking || roundEnding) return;
+        String[][] before = snapshot();
         List<MoveBonuses.Bonus> bonuses = run.playerMove(move);
         if (bonuses == null) {
             toast("Illegal move");
             return;
         }
-        AudioPlayer.playMoveSound();
-        if (move.isCapture) AudioPlayer.playCaptureSound();
+        startSlide(move, before);
+        Music.later(slideTaken != null ? "capture" : "move", SLIDE * 0.85, 1);
         Music.tension(0);
         for (MoveBonuses.Bonus b : bonuses) toast(b + " gold");
         for (String e : run.takeEvents()) toast(e);
@@ -651,12 +743,13 @@ public class PixelGame extends JPanel {
                     ex.printStackTrace();
                     m = null;
                 }
+                String[][] before = snapshot();
                 if (!run.applyAiMove(m)) {
                     System.err.println("AI produced no legal move: " + m);
                     return;
                 }
-                AudioPlayer.playMoveSound();
-                if (m.isCapture) AudioPlayer.playCaptureSound();
+                startSlide(m, before);
+                Music.later(slideTaken != null ? "capture" : "move", SLIDE * 0.85, 1);
                 if (!run.isRoundOver()) {
                     if (run.getEngine().isKingInCheck(run.getRoundState(), true)) {
                         Music.tension(1);
@@ -683,9 +776,17 @@ public class PixelGame extends JPanel {
             react("win", 1.1);
             sayOpp(Lines.win());
             after(1300, () -> {
+                lungeWho = run.getOpponent() - 1;
                 setMode(Mode.LUNGE, 0);
                 lungeStart = now();
                 AudioPlayer.playCheckmateSound();
+                switch (run.getOpponent() - 1) {                     // and his own sound
+                    case 0: Music.sfx("hiss"); break;
+                    case 2: Music.later("crack", 0.75, 1); break;
+                    case 3: Music.later("step1", 0.4, 0.5); Music.later("step2", 0.7, 0.75); Music.later("step3", 0.93, 1); break;
+                    case 4: Music.sfx("sparks"); break;
+                    default: break;
+                }
                 after(1300, this::showSummary);
             });
         } else if (r == GameResult.WHITE_WINS) {
@@ -701,17 +802,95 @@ public class PixelGame extends JPanel {
         }
     }
 
-    private void drawLunge(Graphics2D g, double t) {
-        double k = Math.min(1, (t - lungeStart) / 0.9);
-        Px.rect(g, 0, 0, Px.W, Px.H, Color.BLACK);
-        if (k >= 1) return;
-        int shake = (int) Math.round(Math.sin(t * 90) * 4 * k);
-        Px.cellar(g, 240 + shake, 90, (int) (300 * (1 - k * 0.6)), 1);
-        double scale = 1 + k * k * 4;
-        BufferedImage p = PixelArt.person(opponent(), t, "check", 0.5);
+    /** Draws the person scaled about his face, which stays at (fx, fy) on screen. */
+    private void looming(Graphics2D g, BufferedImage p, double scale, int fx, int fy) {
         int w = (int) (PixelArt.SPRITE_W * scale), h = (int) (PixelArt.SPRITE_H * scale);
-        g.drawImage(p, (Px.W - w) / 2 + shake, 50 - (int) (k * 120), w, h, null);
-        Px.rect(g, 0, 0, Px.W, Px.H, new Color(120, 0, 10, (int) (150 * k)));
+        g.drawImage(p, fx - (int) (75 * scale), fy - (int) (45 * scale), w, h, null);
+    }
+
+    private static int hash(int x, int y) {
+        int h = x * 73856093 ^ y * 19349663;
+        h = (h ^ (h >>> 13)) * 1274126177;
+        return (h ^ (h >>> 16)) & 0x7fffffff;
+    }
+
+    /** Checkmate: he comes for you, each in his own way. */
+    private void drawLunge(Graphics2D g, double t) {
+        double e = t - lungeStart, k = Math.min(1, e / 0.9);
+        Px.rect(g, 0, 0, Px.W, Px.H, Color.BLACK);
+        BufferedImage p = PixelArt.person(PixelArt.OPPONENTS[lungeWho], t, "check", 0.5);
+        switch (lungeWho) {
+            case 0: {                                                 // the Gasman: gas rolls in and he looms out of it
+                if (e > 1.15) return;
+                Px.cellar(g, 240, 90, (int) (300 - 120 * k), 1);
+                looming(g, p, 1 + k * k * 3.2, 240, 130 + (int) (k * 20));
+                double fog = Math.min(1.2, e / 0.8);
+                for (int y = 0; y < Px.H; y += 2) {
+                    for (int x = (y / 2) % 2 * 2; x < Px.W; x += 4) {
+                        double dens = fog - 0.5 * Math.abs(y - 200) / 200.0 + 0.15 * Math.sin(x * 0.03 + e * 3 + y * 0.02);
+                        if ((hash(x, y) & 255) < dens * 255) Px.rect(g, x, y, 2, 2, (hash(x + 1, y) & 1) == 0 ? new Color(84, 100, 74) : new Color(58, 70, 56));
+                    }
+                }
+                if (fog > 0.6) {                                      // only his lenses show through
+                    Px.rect(g, 222, 118 + (int) (k * 20), 6, 4, new Color(200, 230, 210));
+                    Px.rect(g, 252, 118 + (int) (k * 20), 6, 4, new Color(200, 230, 210));
+                }
+                break;
+            }
+            case 1: {                                                 // the Doctor: a slow lean, then the beak stabs
+                if (e > 1.1) return;
+                double scale = e < 0.55 ? 1 + e * 0.5 : 1.27 + Math.pow((e - 0.55) / 0.35, 2) * 5.5;
+                Px.cellar(g, 240, 90, 300, 1);
+                looming(g, p, scale, 240, 130 - (int) (Math.max(0, e - 0.55) * 180));
+                if (e > 0.85) Px.rect(g, 0, 0, Px.W, Px.H, new Color(150, 0, 12, (int) Math.min(220, (e - 0.85) * 900)));
+                break;
+            }
+            case 2: {                                                 // the Goalie: a charge that cracks the glass
+                double kk = Math.min(1, e / 0.75);
+                int shake = (int) Math.round(Math.sin(t * 110) * 7 * kk);
+                if (e < 0.75) {
+                    Px.cellar(g, 240 + shake, 90, 300, 1);
+                    looming(g, p, 1 + kk * kk * kk * 5, 240 + shake, 130);
+                } else if (e < 1.3) {
+                    Px.rect(g, 0, 0, Px.W, Px.H, e < 0.82 ? Px.WHITE : new Color(8, 4, 10));
+                    Color crack = e < 0.82 ? Px.BLACK : Px.CREAM;
+                    for (int ray = 0; ray < 9; ray++) {               // jagged cracks out from where he hit
+                        double a = ray * 0.7 + 0.2, x = 240, y = 170;
+                        for (int step = 0; step < 14; step++) {
+                            double jag = ((hash(ray, step) & 255) / 255.0 - 0.5) * 0.9;
+                            double nx = x + Math.cos(a + jag) * 18, ny = y + Math.sin(a + jag) * 18;
+                            for (int i = 0; i <= 18; i++) Px.dot(g, (int) (x + (nx - x) * i / 18), (int) (y + (ny - y) * i / 18), crack);
+                            x = nx;
+                            y = ny;
+                        }
+                    }
+                }
+                break;
+            }
+            case 3: {                                                 // the Sack: the lamp stutters and each time he is closer
+                double[][] beats = {{0, 0.25, 1}, {0.4, 0.6, 1.9}, {0.7, 0.85, 3.2}, {0.93, 1.05, 5.5}};
+                for (double[] bt : beats) {
+                    if (e >= bt[0] && e < bt[1]) {
+                        Px.cellar(g, 240, 90, 300, 1);
+                        looming(g, p, bt[2], 240, 130 + (int) (bt[2] * 6));
+                    }
+                }
+                break;
+            }
+            default: {                                                // the Welder: the lens flares and sparks fly
+                if (e > 1.15) return;
+                Px.cellar(g, 240, 90, 300, 1);
+                looming(g, p, 1 + k * k * 3, 240, 130);
+                for (int i = 0; i < 46; i++) {
+                    double life = e * (0.8 + (hash(i, 1) % 50) / 100.0);
+                    double a = (hash(i, 2) % 628) / 100.0, sp = 90 + hash(i, 3) % 160;
+                    int x = (int) (240 + Math.cos(a) * sp * life), y = (int) (125 + Math.sin(a) * sp * life * 0.7 + 160 * life * life);
+                    Px.rect(g, x, y, 2, 1, (hash(i, 4) & 1) == 0 ? Px.YELLOW : new Color(255, 250, 220));
+                }
+                Px.rect(g, 0, 0, Px.W, Px.H, new Color(120, 255, 160, (int) Math.min(255, Math.pow(k, 3) * 255)));
+                break;
+            }
+        }
     }
 
     // ─── Summary, swap, game over ───────────────────────────────
@@ -778,6 +957,10 @@ public class PixelGame extends JPanel {
             swapStart = now();
             setMode(Mode.SWAP, 0);
             Music.sting("lightsout");
+            Music.later("chair", 0.8, 0.5);
+            Music.steps(3, 1.05, 0.35, 0.45, 0.12);
+            Music.steps(3, 2.0, 0.33, 0.12, 0.45);
+            Music.later("chair", 2.95, 0.55);
             say(null, new String[]{"The lamp gutters out.", ""}, 140);
         } else {
             enterShop();
@@ -787,9 +970,9 @@ public class PixelGame extends JPanel {
     /** After a win the lamp dies on the beaten opponent and comes back on the next one. */
     private void drawSwap(Graphics2D g, double t) {
         double k = t - swapStart;
-        boolean second = k > 1.6;
+        boolean second = k > 3.1;
         PixelArt.Person p = PixelArt.OPPONENTS[second ? swapTo : swapFrom];
-        boolean dark = (k > 0.6 && k < 1.6) || (k < 0.6 && Math.sin(k * 47) > 0.2) || (k >= 1.6 && k < 2.2 && Math.sin(k * 41) > 0.1);
+        boolean dark = (k > 0.6 && k < 3.1) || (k < 0.6 && Math.sin(k * 47) > 0.2) || (k >= 3.1 && k < 3.7 && Math.sin(k * 41) > 0.1);
         if (dark) {
             Px.rect(g, 0, 0, Px.W, Px.H, new Color(4, 2, 6));
             Px.rect(g, 238, 20, 3, 2, new Color(60, 30, 20));               // the cooling filament
@@ -799,15 +982,15 @@ public class PixelGame extends JPanel {
             lamp(g, 240, t);
             table(g, 30, 186, 420, 18);
         }
-        if (k > 2.2) {
+        if (k > 3.7) {
             Music.play("ambient");
             if (!p.name.equals(speaker)) say(p.name, new String[]{"Someone else is sitting in the chair now. Level " + run.getLevel() + ".", ""}, p.voice);
             speechBox(g, 222, 80);
             choices(g, new String[]{"TO THE DEALERS"}, new Runnable[]{this::enterShop}, t);
-        } else if (k < 1.6) {
-            Px.centred(g, "The lamp gutters out.", 240, 300, Px.ASH, 1);
+        } else if (k < 3.1) {
+            Px.centred(g, k < 1.9 ? "The lamp gutters out." : "Footsteps. A chair scrapes.", 240, 300, Px.ASH, 1);
         }
-        hits.add(0, new Hit(new Rectangle(0, 0, Px.W, Px.H), () -> { if (now() - swapStart > 2.2) enterShop(); }));
+        hits.add(0, new Hit(new Rectangle(0, 0, Px.W, Px.H), () -> { if (now() - swapStart > 3.7) enterShop(); }));
     }
 
     private void drawOver(Graphics2D g, double t) {
@@ -825,6 +1008,8 @@ public class PixelGame extends JPanel {
         confirmYes = () -> {
             overMadeBoard = run.abandonRun();
             setMode(Mode.OVER, 0);
+            Music.later("chair", 0, 0.7);
+            Music.steps(7, 0.7, 0.5, 0.8, 0.1);                       // up the stairs, away
             say(null, new String[]{"You push your chair back and climb the stairs. Behind you, the lamp goes out.", ""}, 140);
         };
         setMode(Mode.CONFIRM, 1);
@@ -850,6 +1035,8 @@ public class PixelGame extends JPanel {
         dealer = 1;
         reaction = null;
         setMode(Mode.SHOP, 2);
+        Music.later("chair", 0, 0.6);                                 // you get up and cross to the dealers
+        Music.steps(3, 0.7, 0.45, 0.55, 0.7);
         say(dealerPerson().name, Lines.dealerGreet(dealer), dealerPerson().voice);
     }
 
@@ -1103,12 +1290,35 @@ public class PixelGame extends JPanel {
             }
             case "over": p.setMode(Mode.OVER, 0); p.say(null, new String[]{"You push your chair back and climb the stairs. Behind you, the lamp goes out.", ""}, 0); break;
             case "confirm": p.startRoundScreen(); p.askGiveUp(); break;
+            case "slide": {
+                p.startRoundScreen();
+                p.setMode(Mode.BOARD, 0);
+                GameState st = p.run.getRoundState();
+                Move pick = null;
+                for (int r = 7; r >= 0 && pick == null; r--) for (int c = 0; c < 8 && pick == null; c++) {
+                    Piece pc = st.board[r][c];
+                    if (pc != null && pc.isWhite() && !pc.getName().equals("King")) {
+                        List<Move> ms = p.run.getEngine().getLegalMovesFromSquare(r, c);
+                        if (!ms.isEmpty()) pick = ms.get(ms.size() - 1);
+                    }
+                }
+                String[][] before = p.snapshot();
+                p.run.playerMove(pick);
+                p.startSlide(pick, before);
+                p.slideStart = t - 0.1;
+                break;
+            }
+            case "lunge0": case "lunge1": case "lunge2": case "lunge3": case "lunge4":
+                p.lungeWho = s.charAt(5) - '0';
+                p.setMode(Mode.LUNGE, 0);
+                p.lungeStart = t - Double.parseDouble(args[2]);
+                break;
             default: break;
         }
         if (p.talk != null) p.talk.skip();
         BufferedImage img = Px.canvas();
         Graphics2D g = Px.pen(img);
-        p.draw(g, p.mode, s.equals("swap") ? 3.4 : t);
+        p.draw(g, p.mode, s.equals("swap") ? 4.2 : s.equals("menu") ? 3.0 : t);
         g.dispose();
         BufferedImage big = new BufferedImage(Px.W * 2, Px.H * 2, BufferedImage.TYPE_INT_RGB);
         Graphics2D bg = big.createGraphics();

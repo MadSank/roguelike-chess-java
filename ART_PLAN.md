@@ -73,6 +73,15 @@ Don't copy Undertale's characters, its heart cursor, or its FIGHT/ACT/ITEM/MERCY
 
 ## Status
 (newest first)
+- 2026-11-12 (polish): the music was approved by ear ("Sounds good"). Added: pieces glide between squares
+  with a small arc (knights hop higher), a dust puff where a piece is taken, an ember line for sniper
+  shots, the move sound landing with the piece (`startSlide`, `snapshot`); a figure sitting in the dark on
+  the menu, a different opponent each time the lamp stutters (`inTheDark`); a different checkmate lunge
+  per opponent (gas fog, beak stab, cracked glass, flicker-closer, welding flare, each with its sound;
+  `drawLunge`, `lungeWho`); footsteps down the stairs, a chair when you sit or stand, steps up the
+  stairs when you give up, and a longer lights-out where you hear the beaten one leave and the next
+  one arrive; drips and creaks in the cellar now and then (`Music.steps`, `Music.later`, ambient).
+  Snapshots: `java PixelGame out.png slide|lunge0..4 <seconds>|menu`.
 - 2026-11-12 (music): **music and sound effects done, waiting for the user's ears.** `Music.java` (see
   Architecture). Checked by measurement only (levels about -23 dBFS RMS with peaks near 0.3, no clipping,
   seamless loops, keys confirmed by chroma analysis; the check layer doubles the rhythmic activity).

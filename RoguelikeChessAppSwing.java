@@ -19,7 +19,6 @@ public class RoguelikeChessAppSwing extends JFrame {
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
             new RoguelikeChessAppSwing().setVisible(true);
-            AudioPlayer.playMusic("intro.wav", false);
         });
     }
 }
