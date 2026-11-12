@@ -107,6 +107,7 @@ public class PixelGame extends JPanel {
             }
         });
         new Timer(33, e -> repaint()).start();
+        Music.play("menu");
         say(null, new String[]{"A cellar, a lamp, a table. A game of chess for what's left of you.", ""}, 200);
     }
 
@@ -154,6 +155,15 @@ public class PixelGame extends JPanel {
         mode = m;
         choice = defaultChoice;
         cardActions = null;
+        switch (m) {                                                  // each place has its own music
+            case MENU: case SCORES: case NAME: case INTRO: Music.play("menu"); break;
+            case FACE: case BOARD: Music.play("table"); break;
+            case SHOP: case DRAFT: case HAND: Music.play("shop"); break;
+            case SUMMARY: Music.play("ambient"); break;
+            case OVER: Music.play("over"); break;
+            case LUNGE: case SWAP: Music.play(null); break;
+            default: break;
+        }
     }
 
     private boolean hot(Rectangle r) {
@@ -327,7 +337,6 @@ public class PixelGame extends JPanel {
     private void beginRun() {
         String n = name.toString().trim();
         run.startNewRun(n.isEmpty() ? "Anonymous" : n);
-        AudioPlayer.playMusic("battle.wav", true);
         introStep = 0;
         setMode(Mode.INTRO, 0);
         say(null, new String[]{"Stone steps lead down into a cellar. The air tastes of smoke.", ""}, 160);
@@ -361,7 +370,7 @@ public class PixelGame extends JPanel {
         toasts.clear();
         setMode(Mode.FACE, 0);
         sayOpp(Lines.greet(run.getOpponent() - 1));
-        AudioPlayer.playMusic("battle.wav", true);
+        Music.tension(0);
     }
 
     private void drawFace(Graphics2D g, double t) {
@@ -596,7 +605,7 @@ public class PixelGame extends JPanel {
             toast(err);
             return;
         }
-        AudioPlayer.playMoveSound();
+        Music.sfx("card");
         toast(c.getName() + " played");
         clearSelection();
         if (run.isRoundOver()) endRound();
@@ -611,6 +620,7 @@ public class PixelGame extends JPanel {
         }
         AudioPlayer.playMoveSound();
         if (move.isCapture) AudioPlayer.playCaptureSound();
+        Music.tension(0);
         for (MoveBonuses.Bonus b : bonuses) toast(b + " gold");
         for (String e : run.takeEvents()) toast(e);
         if (move.isCapture && !run.isRoundOver()) {
@@ -649,6 +659,8 @@ public class PixelGame extends JPanel {
                 if (m.isCapture) AudioPlayer.playCaptureSound();
                 if (!run.isRoundOver()) {
                     if (run.getEngine().isKingInCheck(run.getRoundState(), true)) {
+                        Music.tension(1);
+                        Music.sfx("check");
                         react("check", 1.4);
                         sayOpp(Lines.check());
                     } else if (m.isCapture) {
@@ -679,8 +691,11 @@ public class PixelGame extends JPanel {
         } else if (r == GameResult.WHITE_WINS) {
             react("lose", 2.0);
             sayOpp(Lines.lose());
+            Music.play(null);
+            Music.sting("win");
             after(2100, this::showSummary);
         } else {
+            Music.play("ambient");
             sayOpp(Lines.draw());
             after(1700, this::showSummary);
         }
@@ -705,7 +720,6 @@ public class PixelGame extends JPanel {
         roundEnding = false;
         aiThinking = false;
         reaction = null;
-        if (summary.result == GameResult.BLACK_WINS) AudioPlayer.playCheckmateSound();
         setMode(Mode.SUMMARY, 0);
         talk = null;
     }
@@ -763,6 +777,7 @@ public class PixelGame extends JPanel {
             swapTo = RunController.opponentFor(summary.nextLevel) - 1;
             swapStart = now();
             setMode(Mode.SWAP, 0);
+            Music.sting("lightsout");
             say(null, new String[]{"The lamp gutters out.", ""}, 140);
         } else {
             enterShop();
@@ -785,6 +800,7 @@ public class PixelGame extends JPanel {
             table(g, 30, 186, 420, 18);
         }
         if (k > 2.2) {
+            Music.play("ambient");
             if (!p.name.equals(speaker)) say(p.name, new String[]{"Someone else is sitting in the chair now. Level " + run.getLevel() + ".", ""}, p.voice);
             speechBox(g, 222, 80);
             choices(g, new String[]{"TO THE DEALERS"}, new Runnable[]{this::enterShop}, t);
@@ -845,11 +861,12 @@ public class PixelGame extends JPanel {
 
     private void deal(ShopManager.Result r, String what) {
         if (r == ShopManager.Result.OK) {
-            AudioPlayer.playMoveSound();
+            Music.sfx("coin");
             react("yes", 1.0);
             String[] y = Lines.yes();
             say(dealerPerson().name, new String[]{what, y[1]}, dealerPerson().voice);
         } else {
+            Music.sfx("deny");
             react("no", 1.0);
             say(dealerPerson().name, new String[]{r.message, Lines.no()[1]}, dealerPerson().voice);
         }

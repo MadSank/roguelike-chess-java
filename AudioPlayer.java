@@ -4,6 +4,10 @@ import javax.sound.sampled.*;
 import java.io.File;
 import java.io.IOException;
 
+/**
+ * Sound switches and the game's sound effects, played by the synth in Music.
+ * (playMusic / playSound still play WAV files from assets/audio if any are added later.)
+ */
 public class AudioPlayer {
 
     private static boolean soundEnabled = true;
@@ -15,6 +19,7 @@ public class AudioPlayer {
 
     public static void setSoundEnabled(boolean enabled) {
         soundEnabled = enabled;
+        Music.setMuted(!enabled);
         if (!enabled && musicClip != null && musicClip.isRunning()) {
             musicClip.stop();
         }
@@ -67,15 +72,15 @@ public class AudioPlayer {
     }
 
     public static void playMoveSound() {
-        if (soundEnabled) playSound("move.wav");
+        if (soundEnabled) Music.sfx("move");
     }
 
     public static void playCaptureSound() {
-        if (soundEnabled) playSound("capture.wav");
+        if (soundEnabled) Music.sfx("capture");
     }
 
     public static void playCheckmateSound() {
-        if (soundEnabled) playSound("checkmate.wav");
+        if (soundEnabled) Music.sting("mate");
     }
 
     public static void playSound(String filename) {

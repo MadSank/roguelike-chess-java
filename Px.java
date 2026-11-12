@@ -1,4 +1,3 @@
-import javax.sound.sampled.*;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.util.HashMap;
@@ -425,29 +424,8 @@ public final class Px {
         }
     }
 
-    private static SourceDataLine line;
-    private static boolean soundBroken;
-
-    /** A tiny square-wave blip (a character's voice), played without waiting. */
-    public static synchronized void blip(int pitch) {
-        if (soundBroken || !AudioPlayer.isSoundEnabled()) return;
-        try {
-            if (line == null) {
-                AudioFormat f = new AudioFormat(22050, 8, 1, true, false);
-                line = AudioSystem.getSourceDataLine(f);
-                line.open(f, 4096);
-                line.start();
-            }
-            int n = 22050 * 28 / 1000;
-            byte[] buf = new byte[n];
-            double period = 22050.0 / pitch;
-            for (int i = 0; i < n; i++) {
-                double env = 1.0 - (double) i / n;
-                buf[i] = (byte) (((i % period) < period / 2 ? 18 : -18) * env);
-            }
-            if (line.available() >= n) line.write(buf, 0, n);
-        } catch (Exception e) {
-            soundBroken = true;                              // no audio device: stay quiet
-        }
+    /** A tiny square-wave blip (a character's voice), mixed in by Music. */
+    public static void blip(int pitch) {
+        if (AudioPlayer.isSoundEnabled()) Music.blip(pitch);
     }
 }

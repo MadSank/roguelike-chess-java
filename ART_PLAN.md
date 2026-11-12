@@ -60,10 +60,24 @@ Don't copy Undertale's characters, its heart cursor, or its FIGHT/ACT/ITEM/MERCY
   SwingWorker as before. `java PixelGame out.png SCREEN` saves a picture of a screen (see its `main`).
 - `Lines.java`: what everyone says (greet, talk, hurt, capture, check, win, lose, draw; dealers greet,
   talk, yes, no), as {narration, speech}.
+- `Music.java`: **all music and sound, synthesized in Java** (no sound files). Songs are written as note
+  strings (`seq(layer, instrument, velocity, beat, "D4/1 F4+A4/2 -/1")`) for synth instruments (organ, bass,
+  music box, pulse lead, reed, bell, tremolo strings, heartbeat, clock ticks, boom). Each song is rendered
+  once in the background with a cellar reverb, levelled, made seamless for looping, and streamed with the
+  effects through one line. Songs: menu (D minor, music box over organ), table (E minor ostinato and
+  heartbeat; a second layer of clock and strings fades in while you are in check, `Music.tension`),
+  shop (A minor waltz), ambient (summary), over (dirge with a bell). Stings: mate, win, lightsout.
+  Effects: move, capture, check, coin, deny, card, and the typewriter blips. `PixelGame.setMode` picks
+  the song per screen. `java Music music_preview` writes everything as WAVs (folder ignored by git).
 - `RoguelikeChessAppSwing.java`: the window (960 x 720) holding one PixelGame. BlueJ: run its `main`.
 
 ## Status
 (newest first)
+- 2026-11-12 (music): **music and sound effects done, waiting for the user's ears.** `Music.java` (see
+  Architecture). Checked by measurement only (levels about -23 dBFS RMS with peaks near 0.3, no clipping,
+  seamless loops, keys confirmed by chroma analysis; the check layer doubles the rhythmic activity).
+  Analysis tools installed for this: Python mido, music21, librosa, soundfile (plus numpy / scipy).
+  The music is not heard by Claude; adjust per the user's feedback (tempo, instruments, loudness).
 - 2026-11-12 (conversion): **the whole game is now the pixel style.** `PixelGame` + `Lines` replace
   MenuSwing, BoardViewSwing, ShopScene, IntroScene, CutScene; ScenePlayer, SceneClip, FootageLook,
   BoardArt and the storybook files were deleted (in git history if ever wanted). Flow: menu, name,
