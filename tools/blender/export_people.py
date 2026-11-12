@@ -131,9 +131,23 @@ def convert_material(mat, cache):
         px[:, :3] = bone * (1 - amount) + ink * amount
         px[:, 3] = 1.0
         new = simple_material(safe + "_g", save_png(safe, px, w, h), rough=0.88)
-    elif images:                                           # MPFB skin, hair, eyes: keep the photo texture
+    elif images:                                           # MPFB skin, hair, eyes, scanned objects: keep the photo texture
         hairy = any(k in mat.name.lower() for k in HAIR_WORDS)
-        new = simple_material(safe + "_g", images[0].image, rough=0.6 if hairy else 0.5, alpha=hairy)
+        colour, normal = images[0].image, None             # prefer what is actually wired to the colour and the normal
+        bsdf = next((n for n in nodes if n.type == "BSDF_PRINCIPLED"), None)
+        if bsdf is not None:
+            def source(socket):
+                node = socket.links[0].from_node if socket.is_linked else None
+                while node is not None and node.type != "TEX_IMAGE":
+                    linked = [i for i in node.inputs if i.is_linked]
+                    node = linked[0].links[0].from_node if linked else None
+                return node.image if node is not None and node.image else None
+            colour = source(bsdf.inputs["Base Color"]) or colour
+            normal = source(bsdf.inputs["Normal"])
+        metal = bsdf.inputs["Metallic"].default_value if bsdf is not None and not bsdf.inputs["Metallic"].is_linked else 0.0
+        bronze = bsdf is not None and bsdf.inputs["Metallic"].is_linked      # scanned metal: let it gleam a little
+        new = simple_material(safe + "_g", colour, rough=0.6 if hairy else 0.45 if bronze else 0.5, alpha=hairy, normal=normal)
+        new.node_tree.nodes["Principled BSDF"].inputs["Metallic"].default_value = 0.85 if bronze else metal
     else:
         b = next((n for n in nodes if n.type == "BSDF_PRINCIPLED"), None)
         colour = tuple(b.inputs["Base Color"].default_value)[:3] if b else (0.5, 0.5, 0.5)

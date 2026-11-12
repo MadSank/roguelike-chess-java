@@ -44,6 +44,12 @@ MODELS = {
     "brass_candleholders": "1k",
     "ornate_mirror_01": "1k",
     "mounted_fluorescent_lights": "1k",
+    # Mask candidates: real scanned objects worn (or cut down) as full-face masks.
+    "old_gas_mask": "2k",
+    "marble_bust_01": "2k",
+    "lion_head": "2k",
+    "bull_head": "2k",
+    "gothic_statue": "2k",
     "barrel_stove": "1k",
     "wooden_bookshelf_worn": "1k",
     "old_military_crate": "1k",

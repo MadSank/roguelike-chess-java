@@ -51,8 +51,8 @@ tools/godot/           the Godot binary (local, ignored by git)
 - People: MPFB 2 (MakeHuman) bodies with skin, eyes, hair (`realistic.py`, `make_characters.py`,
   `tools/blender/assets/characters.blend`). Known bug there: opponents 2 and 5 use MPFB age 0.3,
   which is a child; young adults are 0.5.
-- Masks: to be replaced by **museum 3D scans of real masks** (public domain: Smithsonian Open
-  Access, other CC0 scans). The user must approve each download source.
+- Masks: full-face only. Opponents 1-4 wear scanned Poly Haven objects (see Status, `fit_masks.py`);
+  the rest wear the enlarged theatre mask over a black cowl.
 - Character quality is the weak point: an engine improves light, camera and motion, not the models.
   Keep figures in shadow; light hands and masks. If the user finds or buys better characters, use them.
 
@@ -74,6 +74,21 @@ First person from the player's seat, with mouse look limited to a cone; lean in 
 
 ## Status
 (newest first)
+- 2026-11-12 (later): **masks replaced.** The user wants full-face masks only ("we can't make the human
+  face look real": no part of a face may show). Skull scans were tried and rejected (they leave the face
+  visible); don't re-propose them (`fit_skulls.py` and `assets/characters_skulls.blend` are leftovers).
+  - `tools/blender/fit_masks.py` edits `characters.blend` in place: opponents 1-4 wear real scanned
+    objects from Poly Haven (old gas mask, marble bust face, bronze bull head, bronze lion head; added
+    to `fetch_assets.py`), opponent 5 and the three dealers keep the theatre mask, enlarged; everyone
+    gets a matte black cowl under the mask so eye holes and rim gaps show only black.
+    `assets/characters_theatre_masks.blend` is the library before fitting. After `make_characters.py`
+    rebuilds anyone, run `fit_masks.py` again, then `export_people.py`.
+  - `export_people.py` now takes the texture actually wired to Base Color / Normal (scanned objects
+    keep their photo textures) and marks scanned metal as metallic.
+  - All five re-exported and seen seated in Godot (one screenshot each from the seat). Not checked:
+    close up in Godot, in motion, or whether the cowl ever shows through a mask while he moves.
+  Ideas not done: a fifth scanned mask for opponent 5 (Poly Haven `gothic_statue` face, or a second
+  marble variant), scanned masks for the dealers.
 - 2026-11-12: **all five opponents are in Godot with reactions, and a whole run plays inside the engine.**
   - `export_people.py` exports idle + think / capture / hurt / check / win / lose (one NLA track each);
     `opponent1..5.glb` exist (20-26 MB each). Opponents 2 and 5 were rebuilt as adults (age 0.5).
