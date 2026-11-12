@@ -152,6 +152,8 @@ def convert_material(mat, cache):
         b = next((n for n in nodes if n.type == "BSDF_PRINCIPLED"), None)
         colour = tuple(b.inputs["Base Color"].default_value)[:3] if b else (0.5, 0.5, 0.5)
         new = simple_material(safe + "_g", colour=colour, rough=b.inputs["Roughness"].default_value if b else 0.7)
+        if b:
+            new.node_tree.nodes["Principled BSDF"].inputs["Metallic"].default_value = b.inputs["Metallic"].default_value
     cache[mat.name] = new
     return new
 

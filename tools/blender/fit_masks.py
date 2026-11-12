@@ -5,10 +5,10 @@ Gives every character a mask that covers the whole face, and hides the face behi
 
 Why: the generated human faces don't hold up, so no part of a face may show. Each character in
 tools/blender/assets/characters.blend gets
-  - a full-face mask. Opponents wear REAL scanned objects from Poly Haven (CC0; fetch_assets.py):
-    an old gas mask, the face of a marble bust, a bronze bull's head and a bronze lion's head, each
-    cut down to what a mask needs, scaled to a head and set over the eyes. Anyone not listed in
-    MASK_FOR keeps the theatre mask, enlarged to reach past the hairline, chin and cheeks.
+  - a full-face mask of a kind real people wear: opponent 1 a real scanned gas mask (Poly Haven,
+    CC0; fetch_assets.py), the others a plague doctor's mask and hat, an old hockey goalie mask, a
+    burlap sack and a welder's helmet (worn_masks.py). Anyone not listed in MASK_FOR keeps the
+    theatre mask, enlarged to reach past the hairline, chin and cheeks.
   - a matte black cowl under it (a close black covering over the front of the head), so eye holes
     and any gap at the rim show only black.
 Hands, neck, ears and hair stay visible: they are what makes the figure read as a person.
@@ -25,6 +25,7 @@ from mathutils import Matrix, Vector
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import masks  # noqa: E402
+import worn_masks  # noqa: E402
 import realistic  # noqa: E402
 import scene_kit as kit  # noqa: E402
 
@@ -40,15 +41,16 @@ BACK = 0.012         # ...and how far they move back toward the face (metres)
 #   z_range   only this height band of the model is kept (drops plinths, necks, hoses), before scaling
 #   pitch     degrees tipped forward; hide: body parts of the wearer to remove (they would poke through)
 MASK_FOR = {
+    # A real scanned gas mask (Poly Haven), over the whole head.
     "opponent1": {"model": "old_gas_mask", "scale": 1.12, "eyes": (0.075, 0.02), "keep": None, "z_range": (-0.3, 9), "pitch": 0,
-                  "hide": ("hair", "brow", "lash")},
-    "opponent2": {"model": "marble_bust_01", "scale": 1.12, "eyes": (0.03, 0.405), "keep": 0.105, "z_range": (0.285, 9), "pitch": 0,
-                  "hide": ()},
-    "opponent3": {"model": "bull_head", "scale": 0.8, "eyes": (0.14, 0.33), "keep": 0.2, "z_range": (0.18, 9), "pitch": 0,
-                  "hide": ()},
-    "opponent4": {"model": "lion_head", "scale": 0.72, "eyes": (0.05, 0.27), "keep": 0.1, "z_range": (0.09, 9), "pitch": 0,
-                  "hide": ()},
+                  "whole_head": True},
+    # Masks people really wear, built to their real shapes (worn_masks.py).
+    "opponent2": {"worn": "plague_doctor", "whole_head": True},
+    "opponent3": {"worn": "hockey", "whole_head": False},
+    "opponent4": {"worn": "sack", "whole_head": True},
+    "opponent5": {"worn": "welding", "whole_head": False},
 }
+HAIR_PARTS = ("short", "bob", "afro", "long", "ponytail", "braid", "eyebrow", "eyelash")
 
 
 def void_material():
@@ -124,18 +126,18 @@ def fit(col, name):
                              @ Matrix.Rotation(math.pi / 2, 4, "X") @ Matrix.Diagonal((UNIT * GROW,) * 3 + (1,)))
     else:                                              # a scanned object in its place
         bpy.data.objects.remove(mask, do_unlink=True)
-        mask = load_scan(name, cfg)
+        mask = load_scan(name, cfg) if "model" in cfg else worn_masks.build(cfg["worn"], name + "_mask", seed=len(name) + ord(name[-1]))
         for c in list(mask.users_collection):
             c.objects.unlink(mask)
         col.objects.link(mask)
-        world = frame @ Matrix.Translation((0, -0.058, eye_up)) @ Matrix.Rotation(math.radians(cfg["pitch"]), 4, "X")
+        world = frame @ Matrix.Translation((0, -0.058, eye_up)) @ Matrix.Rotation(math.radians(cfg.get("pitch", 0)), 4, "X")
         mask.parent = rig
         mask.parent_type = "BONE"
         mask.parent_bone = bone
         mask.matrix_world = world
-        for o in list(col.objects):                    # hair and brows would poke through a whole-head mask
-            if o.type == "MESH" and any(word in o.name.lower() for word in cfg["hide"]) and o.name != mask.name:
-                if any(k in o.name for k in ("short", "bob", "afro", "long", "ponytail", "braid", "eyebrow", "eyelash")):
+        if cfg["whole_head"]:                          # hair and brows would poke through a whole-head mask
+            for o in list(col.objects):
+                if o.type == "MESH" and o != mask and any(part in o.name for part in HAIR_PARTS):
                     bpy.data.objects.remove(o, do_unlink=True)
     mask["fitted"] = True
 
@@ -152,11 +154,13 @@ def fit(col, name):
     # (Theatre masks sit closer to the face than the scanned ones, so their cowl sits further back.)
     back = 0.03 if cfg else 0.062
     world = frame @ Matrix.Translation((0, back, eye_up - 0.02)) @ Matrix.Diagonal((0.085, 0.085, 0.125, 1))
+    if cfg and cfg["whole_head"]:                      # under a whole-head mask the cowl covers the whole head
+        world = frame @ Matrix.Translation((0, 0.05, eye_up + 0.005)) @ Matrix.Diagonal((0.087, 0.104, 0.128, 1))
     cowl.parent = rig
     cowl.parent_type = "BONE"
     cowl.parent_bone = bone
     cowl.matrix_world = world
-    print("FITTED", name, cfg["model"] if cfg else "theatre mask")
+    print("FITTED", name, (cfg.get("model") or cfg.get("worn")) if cfg else "theatre mask")
     return True
 
 

@@ -51,8 +51,7 @@ tools/godot/           the Godot binary (local, ignored by git)
 - People: MPFB 2 (MakeHuman) bodies with skin, eyes, hair (`realistic.py`, `make_characters.py`,
   `tools/blender/assets/characters.blend`). Known bug there: opponents 2 and 5 use MPFB age 0.3,
   which is a child; young adults are 0.5.
-- Masks: full-face only. Opponents 1-4 wear scanned Poly Haven objects (see Status, `fit_masks.py`);
-  the rest wear the enlarged theatre mask over a black cowl.
+- Masks: full-face only, of kinds real people wear (see Status; `worn_masks.py`, `fit_masks.py`).
 - Character quality is the weak point: an engine improves light, camera and motion, not the models.
   Keep figures in shadow; light hands and masks. If the user finds or buys better characters, use them.
 
@@ -74,6 +73,19 @@ First person from the player's seat, with mouse look limited to a cone; lean in 
 
 ## Status
 (newest first)
+- 2026-11-12 (masks, final direction): the user wants **masks real people wear** (gas mask, plague
+  doctor, Anonymous-style, etc.), full-face. The marble / bull / lion scans were replaced.
+  - Opponent 1: the scanned Poly Haven gas mask. Opponents 2-5: `tools/blender/worn_masks.py` builds a
+    plague doctor's leather hood with beak, goggles and hat; a scuffed hockey goalie mask; a burlap
+    sack tied with rope; a welder's helmet. Leather and burlap use the Poly Haven photo textures;
+    painted surfaces get a generated scuffed texture. `fit_masks.py` `MASK_FOR` maps who wears what.
+  - Whole-head masks (gas, plague, sack) remove the wearer's hair and get a whole-head black cowl.
+  - The dealers still wear the enlarged theatre mask.
+  - Seen: close-up previews (front and side) and each opponent seated in Godot. Not seen in motion.
+  - Not built: the Guy Fawkes ("Anonymous") mask. That exact design is owned by Warner Bros (V for
+    Vendetta); offer a generic smiling moustached carnival mask instead if the user asks again.
+  More real-world mask ideas if wanted: Venetian bauta or volto, fencing mask, balaclava, clown
+  mask, kendo men, WW1 splatter mask.
 - 2026-11-12 (later): **masks replaced.** The user wants full-face masks only ("we can't make the human
   face look real": no part of a face may show). Skull scans were tried and rejected (they leave the face
   visible); don't re-propose them (`fit_skulls.py` and `assets/characters_skulls.blend` are leftovers).
