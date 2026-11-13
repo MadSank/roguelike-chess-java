@@ -17,7 +17,7 @@ import java.util.Random;
  */
 public class PixelGame extends JPanel {
 
-    private enum Mode { MENU, SCORES, NAME, INTRO, FACE, BOARD, LUNGE, SUMMARY, SWAP, SHOP, DRAFT, HAND, CONFIRM, OVER }
+    private enum Mode { OPENING, MENU, SCORES, NAME, INTRO, FACE, BOARD, LUNGE, SUMMARY, SWAP, SHOP, DRAFT, HAND, CONFIRM, OVER }
 
     private final RunController run = new RunController();
     private final Random rng = new Random();
@@ -114,8 +114,7 @@ public class PixelGame extends JPanel {
             }
         });
         new Timer(33, e -> repaint()).start();
-        Music.play("menu");
-        say(null, new String[]{"A cellar, a lamp, a table. A game of chess for what's left of you.", ""}, 200);
+        setMode(Mode.OPENING, 0);
     }
 
     private double now() {
@@ -163,7 +162,9 @@ public class PixelGame extends JPanel {
         choice = defaultChoice;
         cardActions = null;
         switch (m) {                                                  // each place has its own music
-            case MENU: case SCORES: case NAME: case INTRO: Music.play("menu"); break;
+            case OPENING: openingStart = now(); openingSeen = false; Music.playThen("opening", "table"); break;
+            case MENU: case NAME: case INTRO: Music.play("table"); break;
+            case SCORES: Music.play("menu"); break;
             case FACE: case BOARD: Music.play("table"); break;
             case SHOP: case DRAFT: case HAND: Music.play("shop"); break;
             case SUMMARY: Music.play("ambient"); break;
@@ -199,6 +200,10 @@ public class PixelGame extends JPanel {
 
     // ─── Keys ───────────────────────────────────────────────────
     private void key(KeyEvent e) {
+        if (mode == Mode.OPENING) {
+            finishOpening();
+            return;
+        }
         int k = e.getKeyCode();
         if (mode == Mode.NAME && k == KeyEvent.VK_BACK_SPACE && name.length() > 0) {
             name.setLength(name.length() - 1);
@@ -231,6 +236,7 @@ public class PixelGame extends JPanel {
 
     private void draw(Graphics2D g, Mode m, double t) {
         switch (m) {
+            case OPENING: drawOpening(g, t); break;
             case MENU: drawMenu(g, t); break;
             case SCORES: drawScores(g, t); break;
             case NAME: drawName(g, t); break;
@@ -303,9 +309,39 @@ public class PixelGame extends JPanel {
     }
 
     // ─── Menu, scores, name, intro ──────────────────────────────
+    // ─── The opening: a bathroom, a skywalk, the game room (Opening.java), timed by its song ───
+    private double openingStart;
+    private boolean openingSeen;
+
+    private void drawOpening(Graphics2D g, double t) {
+        double pos = Music.position("opening"), ot;
+        if (pos >= 0) {
+            openingSeen = true;
+            ot = pos;
+        } else if (openingSeen) {
+            ot = Opening.LENGTH;                                   // the song has finished
+        } else if (Music.silent() || t - openingStart > 6) {
+            ot = t - openingStart - (Music.silent() ? 0 : 6);      // no sound: keep our own time
+        } else {
+            ot = 0;                                                // the song is still being made
+        }
+        if (ot >= Opening.LENGTH) {
+            finishOpening();
+            Px.rect(g, 0, 0, Px.W, Px.H, Color.BLACK);
+            return;
+        }
+        Opening.draw(g, ot);
+        hits.add(new Hit(new Rectangle(0, 0, Px.W, Px.H), this::finishOpening));
+    }
+
+    private void finishOpening() {
+        if (mode == Mode.OPENING) setMode(Mode.MENU, 0);
+    }
+
     private void drawMenu(Graphics2D g, double t) {
         Px.cellar(g, 240, 110, 260, flicker(t));
         // Someone sits in the dark past the lamp; the lamp stutters and it is someone else.
+        guards(g, t, 70);
         double phase = t % 9;
         boolean out = phase < 0.45 && Math.sin(phase * 55) > -0.3;
         if (!out) g.drawImage(inTheDark(PixelArt.person(PixelArt.OPPONENTS[(int) (t / 9) % 5], t, null, 0)), (Px.W - PixelArt.SPRITE_W) / 2, 84, null);
@@ -320,7 +356,7 @@ public class PixelGame extends JPanel {
         Px.flame(g, 237, 205, t);
         Px.centred(g, "Arrows and Enter, or the mouse.", 240, 300, Px.ASH, 1);
         choices(g, new String[]{"NEW RUN", "SCORES", AudioPlayer.isSoundEnabled() ? "SOUND ON" : "SOUND OFF", "LEAVE"}, new Runnable[]{
-            () -> { name.setLength(0); setMode(Mode.NAME, 0); say(null, new String[]{"Before you go down, the cellar wants a name.", ""}, 200); },
+            () -> { name.setLength(0); setMode(Mode.NAME, 0); say(PixelArt.GUARDS[0].name, new String[]{"The smiling guard leans down to you.", "Name. For the board."}, PixelArt.GUARDS[0].voice); },
             () -> setMode(Mode.SCORES, 0),
             () -> AudioPlayer.setSoundEnabled(!AudioPlayer.isSoundEnabled()),
             () -> System.exit(0)}, t);
@@ -345,6 +381,14 @@ public class PixelGame extends JPanel {
             }
             return d;
         });
+    }
+
+    /** Two guards standing in the dark either side of the table, arms folded; they change with the level. */
+    private void guards(Graphics2D g, double t, int y) {
+        int lv = Math.max(1, run.getLevel());
+        PixelArt.Person l = PixelArt.GUARDS[1 + lv % 4], r = PixelArt.GUARDS[1 + (lv + 2) % 4];
+        g.drawImage(inTheDark(PixelArt.person(l, t + 1.3, null, 0)), -22, y, null);
+        g.drawImage(inTheDark(PixelArt.person(r, t + 2.1, null, 0)), Px.W - 128, y, null);
     }
 
     private void drawScores(Graphics2D g, double t) {
@@ -372,14 +416,14 @@ public class PixelGame extends JPanel {
         run.startNewRun(n.isEmpty() ? "Anonymous" : n);
         introStep = 0;
         setMode(Mode.INTRO, 0);
-        Music.steps(9, 0.4, 0.55, 0.45, 0.9);                         // down the stairs
-        say(null, new String[]{"Stone steps lead down into a cellar. The air tastes of smoke.", ""}, 160);
+        Music.later("chair", 0.3, 0.7);                               // pushed into the chair
+        say(null, new String[]{"A gloved hand pushes you down into the chair. The plate on your face is damp with your breath.", ""}, 160);
     }
 
     private void nextIntro() {
         if (introStep == 0) {
             introStep = 1;
-            say(null, new String[]{"One lamp. One table. A chessboard. Someone is already sitting there, waiting for you.", ""}, 160);
+            say(null, new String[]{"Across the table, someone else in a mask is shaking. Around you, the masked men fold their arms and wait.", ""}, 160);
         } else {
             startRoundScreen();
         }
@@ -387,6 +431,7 @@ public class PixelGame extends JPanel {
 
     private void drawIntro(Graphics2D g, double t) {
         Px.cellar(g, 240, 90, 300, flicker(t));
+        guards(g, t, 36);
         if (introStep == 1) g.drawImage(PixelArt.person(opponent(), t, null, 0), (Px.W - PixelArt.SPRITE_W) / 2, 50, null);
         lamp(g, 240, t);
         table(g, 30, 186, 420, 18);
@@ -410,6 +455,7 @@ public class PixelGame extends JPanel {
 
     private void drawFace(Graphics2D g, double t) {
         Px.cellar(g, 240, 90, 300, flicker(t));
+        guards(g, t, 36);
         g.drawImage(figure(opponent(), t), (Px.W - PixelArt.SPRITE_W) / 2, 50, null);
         lamp(g, 240, t);
         table(g, 30, 186, 420, 18);
@@ -456,6 +502,7 @@ public class PixelGame extends JPanel {
     private void drawBoard(Graphics2D g, double t) {
         GameState s = run.getRoundState();
         Px.cellar(g, 240, 60, 290, flicker(t));
+        guards(g, t, -6);
         g.drawImage(figure(opponent(), t), (Px.W - PixelArt.SPRITE_W) / 2, 8, null);
         lamp(g, 240, t);
         table(g, 20, 142, 440, 16);
@@ -908,6 +955,7 @@ public class PixelGame extends JPanel {
         PixelArt.Person p = PixelArt.OPPONENTS[RunController.opponentFor(s.level) - 1];
         Px.cellar(g, 240, 90, 300, flicker(t));
         String pose = s.result == GameResult.WHITE_WINS ? "lose" : s.result == GameResult.BLACK_WINS ? "win" : null;
+        guards(g, t, 36);
         g.drawImage(PixelArt.person(p, t, pose, 0.5), (Px.W - PixelArt.SPRITE_W) / 2, 50, null);
         lamp(g, 240, t);
         table(g, 30, 186, 420, 18);
@@ -978,6 +1026,7 @@ public class PixelGame extends JPanel {
             Px.rect(g, 238, 20, 3, 2, new Color(60, 30, 20));               // the cooling filament
         } else {
             Px.cellar(g, 240, 90, 300, flicker(t));
+            guards(g, t, 36);
             g.drawImage(PixelArt.person(p, t, null, 0), (Px.W - PixelArt.SPRITE_W) / 2, 50, null);
             lamp(g, 240, t);
             table(g, 30, 186, 420, 18);
@@ -1010,7 +1059,7 @@ public class PixelGame extends JPanel {
             setMode(Mode.OVER, 0);
             Music.later("chair", 0, 0.7);
             Music.steps(7, 0.7, 0.5, 0.8, 0.1);                       // up the stairs, away
-            say(null, new String[]{"You push your chair back and climb the stairs. Behind you, the lamp goes out.", ""}, 140);
+            say(null, new String[]{"You push your chair back. The guards let you go. Behind you, the lamp goes out.", ""}, 140);
         };
         setMode(Mode.CONFIRM, 1);
     }
@@ -1243,7 +1292,8 @@ public class PixelGame extends JPanel {
         double t = 0.4;
         switch (s) {
             case "menu": break;
-            case "name": p.name.append("Madhu"); p.setMode(Mode.NAME, 0); p.say(null, new String[]{"Before you go down, the cellar wants a name.", ""}, 200); break;
+            case "open": break;
+            case "name": p.name.append("Madhu"); p.setMode(Mode.NAME, 0); p.say(PixelArt.GUARDS[0].name, new String[]{"The smiling guard leans down to you.", "Name. For the board."}, PixelArt.GUARDS[0].voice); break;
             case "face": p.startRoundScreen(); break;
             case "board": {
                 p.startRoundScreen();
@@ -1288,7 +1338,7 @@ public class PixelGame extends JPanel {
                 p.mouse = new Point(100, 82);
                 break;
             }
-            case "over": p.setMode(Mode.OVER, 0); p.say(null, new String[]{"You push your chair back and climb the stairs. Behind you, the lamp goes out.", ""}, 0); break;
+            case "over": p.setMode(Mode.OVER, 0); p.say(null, new String[]{"You push your chair back. The guards let you go. Behind you, the lamp goes out.", ""}, 0); break;
             case "confirm": p.startRoundScreen(); p.askGiveUp(); break;
             case "slide": {
                 p.startRoundScreen();
@@ -1318,7 +1368,8 @@ public class PixelGame extends JPanel {
         if (p.talk != null) p.talk.skip();
         BufferedImage img = Px.canvas();
         Graphics2D g = Px.pen(img);
-        p.draw(g, p.mode, s.equals("swap") ? 4.2 : s.equals("menu") ? 3.0 : t);
+        if (s.equals("open")) Opening.draw(g, Double.parseDouble(args[2]) * Opening.SPB);
+        else p.draw(g, p.mode, s.equals("swap") ? 4.2 : s.equals("menu") ? 3.0 : t);
         g.dispose();
         BufferedImage big = new BufferedImage(Px.W * 2, Px.H * 2, BufferedImage.TYPE_INT_RGB);
         Graphics2D bg = big.createGraphics();
@@ -1331,6 +1382,7 @@ public class PixelGame extends JPanel {
     // ─── Choosing the hand ──────────────────────────────────────
     private void drawHand(Graphics2D g, double t) {
         Px.cellar(g, 240, 90, 300, flicker(t));
+        guards(g, t, 36);
         g.drawImage(PixelArt.person(opponent(), t, null, 0), (Px.W - PixelArt.SPRITE_W) / 2, 50, null);
         lamp(g, 240, t);
         table(g, 30, 186, 420, 18);

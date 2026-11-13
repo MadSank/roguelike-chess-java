@@ -3,7 +3,7 @@ import java.util.Random;
 /**
  * What the masked characters say. Each line is {narration, speech}: what you see (ash grey),
  * then what he says (cream, in quotes). Either part may be empty.
- * Opponents are indexed 0..4 (Gasman, Doctor, Goalie, Sack, Welder); dealers 0..2 (card, piece, reseller).
+ * Opponents are indexed 0..4 (Rag, Tape, Box, Bag, Pillow: prisoners forced to play); dealers 0..2 (card, piece, reseller).
  */
 public final class Lines {
     private Lines() {}
@@ -16,50 +16,50 @@ public final class Lines {
 
     // ─── Opponents ──────────────────────────────────────────────
     private static final String[][][] GREET = {
-        {{"He drums his fingers on the table.", "Sit. Your king looks lonely."},
-         {"The filter rattles with every breath.", "Back again. The air down here suits you."}},
-        {{"The beak tilts toward your pieces.", "I have cured worse openings than yours."},
-         {"He pulls his gloves tight, one finger at a time.", "Shall we begin the examination?"}},
-        {{"He leans in. You can hear him breathing behind the holes.", "Your move. Don't keep me waiting."},
-         {"The mask is scratched where something hit it.", "I never let anything past me."}},
-        {{"The sack rustles. Something under it is smiling.", "Play. I'll be gentle. At first."},
-         {"The rope around his neck creaks.", "I've been waiting in the dark so long."}},
-        {{"Green light flickers behind the glass.", "Let's burn through this."},
-         {"The helmet clanks as he nods.", "Sparks fly. Pieces melt. Sit."}},
+        {{"The goggles fog up. He wipes them with a shaking thumb.", "They said whoever loses doesn't leave. Sorry."},
+         {"The knot of his rag has come loose. He doesn't fix it.", "Just play. Don't look at them."}},
+        {{"Only his eyes move between the strips of tape.", "I've won four. I'm not stopping at you."},
+         {"The tape crackles when he breathes.", "Sit. They're watching."}},
+        {{"Someone drew that smile on the box. It wasn't him.", "Do you know the rules? I don't. Not all of them."},
+         {"The cardboard is soft at the corners from sweat.", "Let's make it quick. For both of us."}},
+        {{"The paper bag rustles every time he swallows.", "I used to play in the park. Before."},
+         {"He folds his hands to stop them shaking.", "Don't feel sorry for me. Just play."}},
+        {{"The face on the pillowcase grins. He doesn't.", "I sleep in this. When they let me."},
+         {"The string around his neck is pulled tight.", "Someone has to win. It's going to be me."}},
     };
 
     private static final String[][][] TALK = {
-        {{"", "Breathe slow. Panic wastes air."}, {"", "Everything down here rusts. Even kings."},
-         {"He taps the filter.", "You get used to the smell."}},
-        {{"", "Every piece you lose, I will study."}, {"", "Bleeding is only the body thinking."},
-         {"The beak clicks.", "Hold still."}},
-        {{"", "I've stopped harder shots than yours."}, {"", "Keep your head up. Or don't."},
-         {"He knocks on the mask.", "Still in one piece."}},
-        {{"", "I can't see the board. I don't need to."}, {"Something shifts under the burlap.", ""},
-         {"", "Do you hear that? No? Good."}},
-        {{"", "Heat makes everything honest."}, {"", "Don't look straight at the light."},
-         {"The glass glows a little brighter.", "Closer."}},
+        {{"", "Count them. Five behind you, four behind me."}, {"", "How long have you been here? I lost track."},
+         {"He glances at the guard with the beak.", "That one never blinks."}},
+        {{"", "Every game I win, they bring me a better one."}, {"", "Don't talk to the guards. They don't answer."},
+         {"He picks at the tape by his ear.", "It pulls my hair when I take it off."}},
+        {{"", "There's a window upstairs. You can see the lights."}, {"", "I had a name. It's written on the box somewhere."},
+         {"He tilts the box at the guards.", "They bet on us, you know."}},
+        {{"", "My brother sat in that chair. Last week."}, {"The bag goes still.", "Did you hear something?"},
+         {"", "When this is over, I'm walking out the front."}},
+        {{"", "The smiling one picked me. He picks all of us."}, {"", "Win or lose, keep your mask on."},
+         {"He touches the drawn grin.", "My daughter drew it. For a joke."}},
     };
 
     private static final String[][] HURT = {
-        {"The filter wheezes.", "Lucky."}, {"He hisses behind the mask.", "That will cost you."},
-        {"His fingers stop drumming.", ""}, {"", "Hm. Noted."},
+        {"He flinches.", "No. No, no."}, {"He looks at the guards, not at you.", ""},
+        {"His breath catches.", "That was mine."}, {"", "Okay. Okay. It's fine."},
     };
     private static final String[][] CAPTURE = {
-        {"He takes your piece slowly.", "Mine now."}, {"", "One less."},
-        {"He sets your piece beside him, facing you.", ""}, {"", "Did that hurt?"},
+        {"He takes your piece and won't look up.", "Sorry."}, {"", "That's one."},
+        {"He sets your piece down carefully, like it might break.", ""}, {"", "I have to. You know I have to."},
     };
     private static final String[][] CHECK = {
-        {"He leans over the table.", "Check."}, {"", "Your king is sweating."}, {"", "Run, little king."},
+        {"He leans over the table.", "Check. Please move."}, {"", "Your king. Look at your king."}, {"", "Check."},
     };
     private static final String[][] WIN = {
-        {"He rises out of his chair.", "Mine."}, {"The lamp swings. He doesn't blink.", "Checkmate."},
+        {"He stands up too fast. The guards don't move.", "I'm sorry. I'm sorry."}, {"The room goes very quiet.", "Checkmate."},
     };
     private static final String[][] LOSE = {
-        {"He slumps. The lamp flickers.", "...Well played."}, {"His head drops.", "Go, then. Before it goes dark."},
+        {"His hands fall off the table.", "...Good game."}, {"A guard's hand settles on his shoulder.", "Wait. Wait, one more."},
     };
     private static final String[][] DRAW = {
-        {"He sits back.", "Nobody wins tonight."}, {"He tilts his head.", "Again, then."},
+        {"He laughs, once, without meaning to.", "Nobody loses."}, {"The guards look at each other.", "Again, then."},
     };
 
     public static String[] greet(int opp) { return pick(GREET[clamp(opp)]); }

@@ -23,11 +23,13 @@ public final class Music {
     public static final int RATE = 44100;
 
     // ════════ Composition ════════════════════════════════════════
-    enum Inst { ORGAN, BASS, BOX, LEAD, REED, BELL, STRING, HEART, TICK, TOCK, BOOM, STAB, FIZZ }
+    enum Inst { ORGAN, BASS, BOX, LEAD, REED, BELL, STRING, HEART, TICK, TOCK, BOOM, STAB, FIZZ, KICK, JINGLE, CITY, SAMPLE }
 
     private static final class Note {
         final Inst inst;
         final double beat, len, vel, freq;
+        /** For SAMPLE notes: which sound effect to place here (a footstep, the tap, a door...). */
+        final String sample;
 
         Note(Inst inst, double beat, double len, double vel, double freq) {
             this.inst = inst;
@@ -35,6 +37,16 @@ public final class Music {
             this.len = len;
             this.vel = vel;
             this.freq = freq;
+            this.sample = null;
+        }
+
+        Note(String sample, double beat, double vel) {
+            this.inst = Inst.SAMPLE;
+            this.beat = beat;
+            this.len = 0.1;
+            this.vel = vel;
+            this.freq = 0;
+            this.sample = sample;
         }
     }
 
@@ -42,6 +54,8 @@ public final class Music {
         final String name;
         final double bpm, beats, wind, wet;
         final boolean loop;
+        /** For a one-off song: the beats whose loudness sets its level (so quiet parts stay quiet). */
+        double normFrom = -1, normTo = -1;
         final List<List<Note>> layers = new ArrayList<>();
 
         Song(String name, double bpm, double beats, boolean loop, double wind, double wet) {
@@ -88,7 +102,67 @@ public final class Music {
 
     private static final Map<String, Song> SONGS = new LinkedHashMap<>();
 
+    /** The table's bass line: eighth notes, root root fifth root, a creeping half-step, root low-fifth root. */
+    private static void ostinato(List<Note> out, double start, String[] roots, double vel) {
+        for (int bar = 0; bar < roots.length; bar++) {
+            double r = freq(roots[bar]);
+            double[] steps = {1, 1, 1.5, 1, Math.pow(2, 1 / 12.0), 1, 0.75, 1};
+            for (int i = 0; i < 8; i++) {
+                double f = r * steps[i];
+                if (bar % 4 == 3 && i >= 6) f = r * (i == 6 ? 1.5 : 2);                   // a little lift at the end of each phrase
+                out.add(new Note(Inst.BASS, start + bar * 4 + i * 0.5, 0.42, (i % 4 == 0 ? 0.9 : 0.65) * vel, f));
+            }
+        }
+    }
+
+    private static final String[] TABLE_ROOTS = {"E2", "E2", "C2", "C2", "A1", "A1", "B1", "B1", "E2", "E2", "F2", "F2", "A1", "A1", "B1", "B1"};
+
+    /** Beats in the opening (96 per minute): where each part of the scene starts. */
+    public static final double OPENING_BPM = 96, OPENING_BEATS = 116;
+
     static {
+        // ── The opening: a bathroom, the skywalk, the game room. His footsteps become the beat ──
+        //  0-16 bathroom (tap, scrubbing, towel, latch, door) / 16-96 the walk, one step a beat:
+        //  steps alone, then a kick under them (32), the table's bass and his keys (48), organ and
+        //  music box (64), the melody (80) / 96 he stops at the door / 100-116 the room, heartbeat.
+        Song op = new Song("opening", OPENING_BPM, OPENING_BEATS, false, 0, 0.12);
+        op.normFrom = 80;
+        op.normTo = 96;
+        List<Note> ol = op.layer(0);
+        ol.add(new Note("water", 0.5, 2.2));
+        ol.add(new Note("scrub", 2, 2.0));
+        ol.add(new Note("squeak", 10.2, 1.8));
+        ol.add(new Note("drip", 11, 1.6));
+        ol.add(new Note("towel", 12, 1.8));
+        ol.add(new Note("drip", 12.6, 1.2));
+        ol.add(new Note("latch", 14.3, 0.9));
+        ol.add(new Note("door", 15, 0.9));
+        ol.add(new Note(Inst.CITY, 15, 89, 1.0, 0));
+        for (int b = 17; b <= 95; b++) {
+            double v = b < 48 ? 0.9 : b < 80 ? 0.9 - (b - 48) / 32.0 * 0.4 : 0.45;
+            ol.add(new Note("step" + (1 + b % 3), b, v));
+            if (b >= 32) ol.add(new Note(Inst.KICK, b, 0.1, b < 48 ? 0.15 + (b - 32) / 16.0 * 0.65 : 0.85, 0));
+            if (b >= 48) ol.add(new Note(Inst.JINGLE, b + 0.5, 0.1, 0.6, 0));
+        }
+        seq(ol, Inst.BASS, 0.5, 40, "E1/2 -/2 E1/2 -/2");
+        ostinato(ol, 48, Arrays.copyOf(TABLE_ROOTS, 12), 1);
+        seq(ol, Inst.ORGAN, 0.55, 64, "E3+G3+B3/8 C3+E3+G3/8 A2+C3+E3/8 B2+D#3+F#3/8");
+        seq(ol, Inst.BOX, 0.5, 64, "-/8 G5/2 F#5/2 E5/4 -/8 E5/2 D#5/2 B4/4");
+        seq(ol, Inst.LEAD, 0.8, 80, "B4/2 G4/1 F#4/1 E4/3 -/1 F4/2 A4/1 C5/1 B4/3 -/1");
+        ol.add(new Note(Inst.BOOM, 96, 0.1, 0.35, 0));                       // he stops: everything stops
+        ol.add(new Note("latch", 98.5, 0.9));
+        ol.add(new Note("door", 99, 0.8));
+        for (double b : new double[]{100.5, 101.5, 102.5, 103.5}) ol.add(new Note("step2", b, 0.35));
+        ol.add(new Note("shut", 104, 0.9));
+        seq(ol, Inst.ORGAN, 0.45, 100, "E2+B2/16");
+        for (int b = 100; b < 116; b += 4) {
+            hit(ol, Inst.HEART, 0.7, b);
+            hit(ol, Inst.HEART, 0.45, b + 0.4);
+        }
+        seq(ol, Inst.STRING, 0.5, 108, "F4+B4/8");
+        seq(ol, Inst.BOX, 0.4, 108, "B5/4 G5/4");
+        SONGS.put(op.name, op);
+
         // ── The cellar stairs (menu, name, intro): D minor, an organ breathing under a music box ──
         Song m = new Song("menu", 72, 32, true, 0.5, 0.32);
         seq(m.layer(0), Inst.ORGAN, 0.8, 0, "D3+F3+A3/4 Bb2+D3+F3/4 G2+Bb2+D3/4 A2+C#3+E3/4 D3+F3+A3/4 C3+F3+A3/4 Bb2+D3+G3/4 A2+C#3+E3+G3/4");
@@ -100,15 +174,9 @@ public final class Music {
 
         // ── Across the table (a round): E minor with a creeping half-step, heartbeat; check adds a layer ──
         Song t = new Song("table", 96, 64, true, 0.35, 0.26);
-        String[] roots = {"E2", "E2", "C2", "C2", "A1", "A1", "B1", "B1", "E2", "E2", "F2", "F2", "A1", "A1", "B1", "B1"};
+        ostinato(t.layer(0), 0, TABLE_ROOTS, 1);
         for (int bar = 0; bar < 16; bar++) {
-            double r = freq(roots[bar]);
-            double[] steps = {1, 1, 1.5, 1, Math.pow(2, 1 / 12.0), 1, 0.75, 1};          // root root fifth root (half-step up) root low-fifth root
-            for (int i = 0; i < 8; i++) {
-                double f = r * steps[i];
-                if (bar % 4 == 3 && i >= 6) f = r * (i == 6 ? 1.5 : 2);                   // a little lift at the end of each phrase
-                t.layer(0).add(new Note(Inst.BASS, bar * 4 + i * 0.5, 0.42, i % 4 == 0 ? 0.9 : 0.65, f));
-            }
+            hit(t.layer(0), Inst.KICK, 0.55, bar * 4 + 2);                                   // the footsteps from the opening, still walking
             hit(t.layer(0), Inst.HEART, 0.7, bar * 4);
             hit(t.layer(0), Inst.HEART, 0.45, bar * 4 + 0.4);
         }
@@ -238,11 +306,19 @@ public final class Music {
             case BOOM: len = 3; break;
             case STAB: len = dur + 1.5; break;
             case FIZZ: len = 0.7; break;
+            case KICK: len = 0.3; break;
+            case JINGLE: len = 0.15; break;
+            case CITY: len = dur + 1.5; break;
             default: len = dur;
         }
         int count = (int) (len * RATE);
         double[] ph = new double[4];
-        Filter flt = new Filter(), flt2 = new Filter();
+        if (n.inst == Inst.SAMPLE) {                                         // a whole sound effect, placed on the beat
+            float[] b = makeSfx(n.sample);
+            for (int i = 0; i < b.length && at + i < buf.length; i++) if (at + i >= 0) buf[at + i] += (float) (b[i] * vel);
+            return;
+        }
+        Filter flt = new Filter(), flt2 = new Filter(), flt3 = new Filter();
         double dt = f / RATE;
         for (int i = 0; i < count && at + i < buf.length; i++) {
             if (at + i < 0) continue;
@@ -329,6 +405,30 @@ public final class Music {
                     ph[1] = (ph[1] + dt * 1.012) % 1;
                     x = flt.low(x, 3200 * Math.exp(-t / 1.5) + 300) * (0.6 + 0.4 * Math.sin(2 * Math.PI * 11 * t));
                     x *= 0.07 * vel * Math.min(1, t / 0.004) * Math.exp(-t / 1.2);
+                    break;
+                }
+                case KICK: {
+                    double fr = 50 + 110 * Math.exp(-t / 0.025);
+                    ph[0] = (ph[0] + fr / RATE) % 1;
+                    x = (Math.sin(2 * Math.PI * ph[0]) * Math.exp(-t / 0.16) + (t < 0.004 ? (NOISE.nextDouble() * 2 - 1) * 0.4 : 0)) * 0.55 * vel;
+                    break;
+                }
+                case JINGLE: {                                               // keys on a belt
+                    double[] fr = {3150, 4420, 5930, 7300};
+                    for (int k = 0; k < fr.length; k++) x += Math.sin(2 * Math.PI * fr[k] * t + k) * Math.exp(-t / (0.035 + 0.01 * k));
+                    x *= 0.03 * vel;
+                    break;
+                }
+                case CITY: {                                                 // the city: rumble, traffic, craft passing, a siren far off
+                    double fadeIn = Math.min(1, t / 1.5), fadeOut = t > dur ? Math.max(0, 1 - (t - dur) / 1.5) : 1;
+                    double noise = NOISE.nextDouble() * 2 - 1;
+                    ph[0] = ph[0] * 0.995 + noise * 0.05;
+                    double rumble = flt.low(ph[0], 110) * 2.2;
+                    double traffic = flt2.low(noise, 500) * (0.25 + 0.15 * Math.sin(t * 0.37) + 0.1 * Math.sin(t * 1.13));
+                    double cyc = (t % 5.5) / 5.5, pass = Math.exp(-Math.pow((cyc - 0.5) / 0.12, 2));
+                    double whoosh = flt3.band(noise, 400 + 1600 * cyc, 0.5) * pass * 0.5;
+                    double st = t % 23, siren = st < 6 ? Math.sin(2 * Math.PI * (st % 1.2 < 0.6 ? 660 : 820) * t) * 0.03 * Math.sin(Math.PI * st / 6) : 0;
+                    x = (rumble + traffic + whoosh + siren) * 0.5 * vel * fadeIn * fadeOut;
                     break;
                 }
                 case FIZZ: {
@@ -419,6 +519,12 @@ public final class Music {
         double sum = 0, peak = 0;
         for (float v : out[0]) { sum += v * v; peak = Math.max(peak, Math.abs(v)); }
         double k = s.loop ? MUSIC_RMS / Math.max(1e-6, Math.sqrt(sum / out[0].length)) : STING_PEAK / Math.max(1e-6, peak);
+        if (s.normTo > 0) {
+            double spb2 = 60.0 / s.bpm, win = 0;
+            int a = (int) (s.normFrom * spb2 * RATE), b = Math.min(out[0].length, (int) (s.normTo * spb2 * RATE));
+            for (int i = a; i < b; i++) win += out[0][i] * out[0][i];
+            k = MUSIC_RMS / Math.max(1e-6, Math.sqrt(win / Math.max(1, b - a)));
+        }
         for (float[] layer : out) for (int i = 0; i < layer.length; i++) layer[i] *= k;
         return out;
     }
@@ -433,7 +539,7 @@ public final class Music {
     private static final Map<String, float[]> SFX = new HashMap<>();
 
     private static float[] makeSfx(String name) {
-        float[] b = new float[3 * RATE];
+        float[] b = new float[8 * RATE];
         Filter f = new Filter(), f2 = new Filter();
         Random r = new Random(name.hashCode());
         int n;
@@ -558,7 +664,80 @@ public final class Music {
                 }
                 break;
             }
+            case "water": {                                                 // a tap running
+                n = RATE * 6;
+                for (int i = 0; i < n; i++) {
+                    double t = (double) i / RATE, noise = r.nextDouble() * 2 - 1;
+                    double bubbles = 0.6 + 0.4 * Math.sin(t * 37 + Math.sin(t * 13) * 3);
+                    double w = f.band(noise, 1800 + 600 * Math.sin(t * 5.3), 0.4) * bubbles + f2.low(noise, 400) * 0.5;
+                    b[i] = (float) (w * Math.min(1, t / 0.15) * Math.min(1, (6 - t) / 0.1) * 0.35);
+                }
+                break;
+            }
+            case "scrub": {                                                 // soapy hands
+                n = RATE * 5;
+                for (int i = 0; i < n; i++) {
+                    double t = (double) i / RATE, env = Math.pow(Math.max(0, Math.sin(2 * Math.PI * 3.5 * t)), 2) * (0.7 + 0.3 * Math.sin(t * 1.7));
+                    b[i] = (float) (f.band(r.nextDouble() * 2 - 1, 2500, 0.8) * env * Math.min(1, (5 - t) / 0.3) * 0.25);
+                }
+                break;
+            }
+            case "squeak": {                                                // the tap turned off
+                n = (int) (RATE * 0.5);
+                for (int i = 0; i < n; i++) {
+                    double t = (double) i / RATE, x = 0;
+                    if (t < 0.35) x = Math.sin(2 * Math.PI * (1100 + 1100 * t) * t + Math.sin(t * 250) * 0.6) * Math.sin(Math.PI * t / 0.35) * 0.1;
+                    else x = Math.sin(2 * Math.PI * 300 * (t - 0.35)) * Math.exp(-(t - 0.35) / 0.05) * 0.3;
+                    b[i] = (float) x;
+                }
+                break;
+            }
+            case "towel": {                                                 // paper towels pulled
+                n = (int) (RATE * 0.8);
+                for (int i = 0; i < n; i++) {
+                    double t = (double) i / RATE, x = 0;
+                    for (double a : new double[]{0, 0.25, 0.5}) if (t >= a) x += Math.exp(-(t - a) / 0.06);
+                    b[i] = (float) (f.band((r.nextDouble() * 2 - 1) * (r.nextDouble() < 0.3 ? 1 : 0.3), 4000, 1) * x * 0.4);
+                }
+                break;
+            }
+            case "latch": {
+                n = (int) (RATE * 0.2);
+                for (int i = 0; i < n; i++) {
+                    double t = (double) i / RATE, x = 0;
+                    for (double a : new double[]{0, 0.09}) if (t >= a) x += f.band(r.nextDouble() * 2 - 1, 3000, 0.6) * Math.exp(-(t - a) / 0.003) + Math.sin(2 * Math.PI * 1200 * (t - a)) * Math.exp(-(t - a) / 0.01) * 0.3;
+                    b[i] = (float) (x * 0.5);
+                }
+                break;
+            }
+            case "door": {                                                  // a heavy door, hinges complaining, air moving
+                n = (int) (RATE * 1.4);
+                double ph = 0;
+                for (int i = 0; i < n; i++) {
+                    double t = (double) i / RATE;
+                    ph += (26 + 10 * Math.sin(t * 6) + 4 * Math.sin(t * 17)) / RATE;
+                    double creak = f.band((ph % 1) < 0.1 ? 1 : 0, 380 + 120 * Math.sin(t * 3), 0.3) * Math.sin(Math.PI * Math.min(1, t / 0.9)) * 0.7;
+                    double air = f2.low(r.nextDouble() * 2 - 1, 800) * Math.exp(-Math.pow((t - 0.8) / 0.3, 2)) * 0.6;
+                    b[i] = (float) ((creak + air) * 0.6);
+                }
+                break;
+            }
+            case "shut": {                                                  // the door shuts behind him
+                n = (int) (RATE * 0.6);
+                for (int i = 0; i < n; i++) {
+                    double t = (double) i / RATE;
+                    double x = Math.sin(2 * Math.PI * 60 * t) * Math.exp(-t / 0.3) + f.low(r.nextDouble() * 2 - 1, 300) * Math.exp(-t / 0.08) * 1.5;
+                    if (t > 0.05) x += f2.band(r.nextDouble() * 2 - 1, 2500, 0.6) * Math.exp(-(t - 0.05) / 0.004);
+                    b[i] = (float) (x * 0.5);
+                }
+                break;
+            }
             default: n = 1;
+        }
+        if (name.equals("door") || name.equals("shut") || name.equals("latch") || name.equals("squeak") || name.equals("towel")) {
+            float[] wet = Arrays.copyOf(b, n + RATE);                        // a small tiled room
+            reverb(wet, 0.3);
+            return trim(wet);
         }
         if (name.startsWith("step") || name.equals("drip") || name.equals("creak") || name.equals("chair") || name.equals("crack")) {
             float[] wet = Arrays.copyOf(b, n + RATE);                        // these happen in the cellar: let it answer
@@ -583,6 +762,9 @@ public final class Music {
         final boolean loop;
         int pos;
         double gain, target;
+        /** For a one-off song: what starts the moment it reaches `endAt` (its last beat), while its echo dies away. */
+        String next;
+        int endAt = Integer.MAX_VALUE;
         final double[] layerGain, layerTarget;
 
         Playing(String name, float[][] layers, boolean loop, double gain, double target) {
@@ -649,8 +831,14 @@ public final class Music {
         return null;
     }
 
+    private static String chainFrom, chainTo;
+
     private static void begin(String name) {
-        Playing p = new Playing(name, RENDERED.get(name), true, 0, 1);
+        Song song = SONGS.get(name);
+        boolean loop = song == null || song.loop;
+        Playing p = new Playing(name, RENDERED.get(name), loop, loop ? 0 : 1, 1);
+        if (!loop) p.endAt = (int) (song.beats * 60 / song.bpm * RATE);
+        if (name.equals(chainFrom)) p.next = chainTo;
         p.layerTarget[0] = 1;
         if (p.layers.length > 1) p.layerTarget[1] = p.layerGain[1] = tension;
         MUSIC.add(p);
@@ -664,6 +852,24 @@ public final class Music {
         wanted = name;
         for (Playing p : MUSIC) p.target = 0;
         if (name != null && RENDERED.containsKey(name)) begin(name);
+    }
+
+    /** Plays a one-off song (the opening), then goes straight into `next` on its last beat. */
+    public static synchronized void playThen(String name, String next) {
+        chainFrom = name;
+        chainTo = next;
+        play(name);
+    }
+
+    /** Seconds into a playing song as heard (allowing for the sound card's buffer), or -1 if it isn't playing. */
+    public static synchronized double position(String name) {
+        for (Playing p : MUSIC) if (p.name.equals(name)) return Math.max(0, p.pos - 4096) / (double) RATE;
+        return -1;
+    }
+
+    /** True if there is no sound device, so pictures must keep their own time. */
+    public static boolean silent() {
+        return broken;
     }
 
     /** How tense the table music is: 0 calm, 1 your king is in check (fades the second layer in). */
@@ -745,6 +951,7 @@ public final class Music {
             synchronized (Music.class) {
                 double duckTarget = STINGS.isEmpty() ? 1 : 0.3;
                 duck += (duckTarget - duck) * 0.08;
+                List<String> chained = new ArrayList<>();
                 for (Iterator<Playing> it = MUSIC.iterator(); it.hasNext(); ) {
                     Playing p = it.next();
                     double g0 = p.gain;
@@ -761,10 +968,20 @@ public final class Music {
                             double lg = l0[l] + (p.layerGain[l] - l0[l]) * k;
                             if (lg > 0) v += p.layers[l][p.pos % p.layers[l].length] * lg;
                         }
-                        mix[i] += (float) (v * g);
-                        p.pos = (p.pos + 1) % len;
+                        if (p.loop || p.pos < len) mix[i] += (float) (v * g);
+                        if (p.loop) p.pos = (p.pos + 1) % len;
+                        else p.pos++;
+                        if (p.pos == p.endAt && p.next != null && p.target > 0) {
+                            chained.add(p.next);
+                            p.target = 0.0001;                                 // let the opening's echo ring out under the next song
+                        }
                     }
-                    if (p.target == 0 && p.gain <= 0) it.remove();
+                    if ((p.target == 0 && p.gain <= 0) || (!p.loop && p.pos >= len)) it.remove();
+                }
+                for (String name : chained) {
+                    Playing q = new Playing(name, RENDERED.get(name), true, 1, 1);
+                    if (q.layers.length > 1) q.layerTarget[1] = q.layerGain[1] = tension;
+                    MUSIC.add(q);
                 }
                 for (Iterator<Playing> it = STINGS.iterator(); it.hasNext(); ) {
                     Playing p = it.next();
@@ -813,7 +1030,7 @@ public final class Music {
             write(new java.io.File(dir, s.name + ".wav"), all);
             System.out.println(s.name + ": " + String.format("%.1f", all.length / (double) RATE) + " s, rendered in " + (System.currentTimeMillis() - t0) + " ms");
         }
-        for (String e : new String[]{"move", "capture", "check", "coin", "deny", "card", "step1", "step2", "step3", "drip", "creak", "chair", "hiss", "crack", "sparks"}) write(new java.io.File(dir, "sfx_" + e + ".wav"), makeSfx(e));
+        for (String e : new String[]{"water", "scrub", "squeak", "towel", "latch", "door", "shut", "move", "capture", "check", "coin", "deny", "card", "step1", "step2", "step3", "drip", "creak", "chair", "hiss", "crack", "sparks"}) write(new java.io.File(dir, "sfx_" + e + ".wav"), makeSfx(e));
     }
 
     private static void write(java.io.File f, float[] x) throws Exception {

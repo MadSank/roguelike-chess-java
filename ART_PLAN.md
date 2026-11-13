@@ -25,6 +25,25 @@ the whole face (gas mask, plague doctor, hockey goalie mask, burlap sack, weldin
 nod / shake); lights-out swap after a win; checkmate lunge; turning between dealers in the shop.
 Don't copy Undertale's characters, its heart cursor, or its FIGHT/ACT/ITEM/MERCY labels.
 
+## Direction change (2026-11-13): the megacity, prisoners and guards
+The user gave a concept image (a huge, hazy, overcrowded city of towers under a shaft of light, cables,
+neon, flying traffic) and asked for:
+- **An opening on launch** (`Opening.java`, timed by the "opening" song): a bathroom where you see only
+  tiles and hear someone wash; he opens the door and the camera follows him from the side across a
+  skywalk through the rotting city (credits hidden on neon signs: A GAME BY MADDOX, SAMBAR BOY, and
+  the ASHES title); his footsteps turn into the music; at the far door he puts on his mask, enters the
+  game room, takes his place among the guards; the camera turns to you and moves in; then the menu.
+  Any key or click skips it.
+- **Who wears what:** the players are prisoners forced to play, in makeshift masks: opponents The Rag
+  (t-shirt and swim goggles), The Tape (duct tape), The Box (cardboard, marker smile), The Bag (paper
+  bag), The Pillow (pillowcase with a drawn face); you wear a paper plate (`PixelArt.PLAYER`). The guards
+  standing round the table wear real masks: the walker is The White Smile (a white smiling mask with a
+  curled moustache, the user's "anonymous mask", drawn as our own take), then gas mask, plague doctor,
+  hockey, welding (`PixelArt.GUARDS`, standing with folded arms). Two guards stand in the dark either
+  side of every table screen. The dealers (bauta, fencing, balaclava) are guards who sell.
+- **Music:** the table music continues straight out of the opening (same key and tempo; its kick on the
+  third beat is the walk's heartbeat). The menu, name and table screens all use it now.
+
 ## Rules
 - Plain `javac *.java`, default package, flat folder, BlueJ-openable, no libraries. Tests stay
   plain `Test*.java` classes (`.\test.cmd`). `DESIGN.md` is the rulebook.
@@ -73,6 +92,18 @@ Don't copy Undertale's characters, its heart cursor, or its FIGHT/ACT/ITEM/MERCY
 
 ## Status
 (newest first)
+- 2026-11-13 (opening): **the new direction is in, waiting for the user's verdict.** `Opening.java`
+  (bathroom tiles, city in parallax layers built once: sky shaft, three tower layers with floors of lit
+  windows, neon glyph signs, credit signs, traffic, a barge, god rays, dust, the street and crowd below;
+  the skywalk with booth, sleepers, broken vending machine, rubbish, puddle, drone, passers-by, the game
+  room door; the walking guard drawn with Shade in 12 frames plus the mask going on; the room with the
+  guard ring and your back; the reverse shot of you with a zoom). Music: "opening" song (water, scrub,
+  tap, towel, latch, door samples placed on beats; city bed; one footstep a beat from beat 17 to 95, kick
+  from 32, the table bass and key jingle from 48, organ and music box from 64, melody from 80; the room
+  from 100), `Music.playThen("opening", "table")` chains into the table loop on beat 116;
+  `Music.position` drives the pictures (`PixelGame.drawOpening`). Measured: steps land within 15 ms of
+  the beat; opening starts about 1 s after launch. New masks and lines for the prisoners (`Lines`).
+  Snapshot any moment: `java PixelGame out.png open <beat>`.
 - 2026-11-12 (polish): the music was approved by ear ("Sounds good"). Added: pieces glide between squares
   with a small arc (knights hop higher), a dust puff where a piece is taken, an ember line for sniper
   shots, the move sound landing with the piece (`startSlide`, `snapshot`); a figure sitting in the dark on

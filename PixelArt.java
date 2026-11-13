@@ -4,15 +4,16 @@ import java.awt.image.BufferedImage;
 
 /**
  * The pixel sprites, all drawn in code and shaded by Shade (lamp-lit, purple shadows, warm rims):
- * the eight masked characters (upper body, as if behind a table or counter) and the chess pieces.
+ * the masked characters (upper body, as if behind a table or counter) and the chess pieces.
  *
- * Masks (all covering the whole face): GAS, PLAGUE, HOCKEY, SACK, WELDING (opponents);
- * BAUTA, FENCING, BALACLAVA (dealers).
+ * The players are prisoners forced to play, in makeshift masks: RAG, TAPE, BOX, BAG, PILLOW (opponents)
+ * and PLATE (you). The guards around the table wear real masks: GAS, PLAGUE, SMILE, HOCKEY, WELDING;
+ * the dealers too (BAUTA, FENCING, BALACLAVA). SACK is no longer used.
  */
 public final class PixelArt {
     private PixelArt() {}
 
-    public enum Mask { GAS, PLAGUE, HOCKEY, SACK, WELDING, BAUTA, FENCING, BALACLAVA }
+    public enum Mask { GAS, PLAGUE, HOCKEY, SACK, WELDING, BAUTA, FENCING, BALACLAVA, RAG, TAPE, BOX, BAG, PILLOW, PLATE, SMILE }
 
     /** One person: mask, robe colour, whether the hood is up, gloves, and a voice (blip pitch). */
     public static final class Person {
@@ -21,23 +22,41 @@ public final class PixelArt {
         public final Color robe;
         public final boolean hood, gloves;
         public final int voice;
+        /** Standing with arms folded (guards) instead of sitting with hands on the table. */
+        public final boolean standing;
 
         public Person(String name, Mask mask, Color robe, boolean hood, boolean gloves, int voice) {
+            this(name, mask, robe, hood, gloves, voice, false);
+        }
+
+        public Person(String name, Mask mask, Color robe, boolean hood, boolean gloves, int voice, boolean standing) {
             this.name = name;
             this.mask = mask;
             this.robe = robe;
             this.hood = hood;
             this.gloves = gloves;
             this.voice = voice;
+            this.standing = standing;
         }
     }
 
+    /** The other prisoners you are made to play, one per level, in masks made from whatever they had. */
     public static final Person[] OPPONENTS = {
-        new Person("The Gasman", Mask.GAS, new Color(98, 80, 66), true, false, 180),
-        new Person("The Doctor", Mask.PLAGUE, new Color(138, 42, 48), false, true, 300),
-        new Person("The Goalie", Mask.HOCKEY, new Color(126, 104, 74), true, false, 240),
-        new Person("The Sack", Mask.SACK, new Color(66, 78, 112), false, false, 140),
-        new Person("The Welder", Mask.WELDING, new Color(70, 62, 72), false, true, 110),
+        new Person("The Rag", Mask.RAG, new Color(92, 84, 70), false, false, 180),
+        new Person("The Tape", Mask.TAPE, new Color(70, 74, 90), true, false, 300),
+        new Person("The Box", Mask.BOX, new Color(110, 96, 80), false, false, 240),
+        new Person("The Bag", Mask.BAG, new Color(66, 78, 96), false, false, 140),
+        new Person("The Pillow", Mask.PILLOW, new Color(96, 70, 70), false, false, 110),
+    };
+    /** You: a paper plate with two holes, tied on with string. */
+    public static final Person PLAYER = new Person("You", Mask.PLATE, new Color(80, 74, 66), true, false, 220);
+    /** The masked men standing round the table. The White Smile is the one who walks in from the skywalk. */
+    public static final Person[] GUARDS = {
+        new Person("The White Smile", Mask.SMILE, new Color(44, 42, 50), false, true, 200, true),
+        new Person("Gas Guard", Mask.GAS, new Color(52, 50, 46), true, true, 160, true),
+        new Person("Beak Guard", Mask.PLAGUE, new Color(48, 40, 44), false, true, 280, true),
+        new Person("Goalie Guard", Mask.HOCKEY, new Color(50, 52, 58), true, true, 230, true),
+        new Person("Welder Guard", Mask.WELDING, new Color(56, 50, 48), false, true, 120, true),
     };
     public static final Person CARD_DEALER = new Person("The Card Dealer", Mask.BAUTA, new Color(84, 62, 54), true, false, 360);
     public static final Person PIECE_DEALER = new Person("The Piece Dealer", Mask.FENCING, new Color(122, 98, 70), false, true, 200);
@@ -124,7 +143,15 @@ public final class PixelArt {
         }
         robe(img, robe, robeDark, sx, by);
         head(img, who, hx, hy, t);
-        hands(img, who, sx, by);
+        if (who.standing) {                                             // arms folded across the chest
+            Color[] hand = who.gloves ? GLOVE : SKIN;
+            Shade.stroke(img, new Line2D.Double(30 + sx, 116 + by, 98 + sx, 100 + by), 13, robeDark);   // right arm under
+            Shade.part(img, new Ellipse2D.Double(94 + sx, 94 + by, 13, 11), hand, 4);
+            Shade.stroke(img, new Line2D.Double(120 + sx, 116 + by, 52 + sx, 100 + by), 13, robe);       // left arm over
+            Shade.part(img, new Ellipse2D.Double(43 + sx, 94 + by, 13, 11), hand, 4);
+        } else {
+            hands(img, who, sx, by);
+        }
         return img;
     }
 
@@ -191,6 +218,13 @@ public final class PixelArt {
             case BAUTA: bauta(img, at, hx, hy, t); break;
             case FENCING: fencing(img, at, hx, hy, t); break;
             case BALACLAVA: balaclava(img, at, hx, hy, t); break;
+            case RAG: rag(img, at, hx, hy, t); break;
+            case TAPE: tape(img, at, hx, hy, t); break;
+            case BOX: box(img, at, hx, hy, t); break;
+            case BAG: bag(img, at, hx, hy, t); break;
+            case PILLOW: pillow(img, at, hx, hy, t); break;
+            case PLATE: plate(img, at, hx, hy, t); break;
+            case SMILE: smile(img, at, hx, hy, t); break;
             default: break;
         }
     }
@@ -381,6 +415,179 @@ public final class PixelArt {
         eye(img, tr(at, new Ellipse2D.Double(62, 38, 8, 6)), 64 + hx, 39 + hy, t);
         eye(img, tr(at, new Ellipse2D.Double(80, 38, 8, 6)), 82 + hx, 39 + hy, t + 1);
         Shade.part(img, tr(at, new Ellipse2D.Double(71, 62, 8, 3)), Shade.ramp(new Color(60, 12, 16), 2), 0, false, 1);
+    }
+
+    // ─── The makeshift masks ─────────────────────────────────────
+    private static final Color INK = new Color(26, 20, 24);
+
+    /** A t-shirt wound round the head and knotted, with swimming goggles over it. */
+    private static void rag(BufferedImage img, AffineTransform at, int hx, int hy, double t) {
+        Color[] rag = Shade.ramp(new Color(116, 54, 48), 5);
+        Shade.part(img, tr(at, new Ellipse2D.Double(51, 16, 48, 64)), rag, 14);
+        for (int i = 0; i < 4; i++) {                                     // the turns of cloth
+            Path2D fold = new Path2D.Double();
+            fold.moveTo(52, 24 + i * 15);
+            fold.quadTo(75, 30 + i * 15 + (i % 2) * 4, 98, 20 + i * 15);
+            Shade.stroke(img, tr(at, fold), 1.6f, Shade.ramp(new Color(80, 34, 34), 3));
+        }
+        Path2D tail1 = new Path2D.Double();                               // the knot and its ends
+        tail1.moveTo(98, 50);
+        tail1.quadTo(110, 56, 112, 68);
+        Shade.stroke(img, tr(at, tail1), 5, rag);
+        Path2D tail2 = new Path2D.Double();
+        tail2.moveTo(98, 52);
+        tail2.quadTo(114, 50, 120, 58);
+        Shade.stroke(img, tr(at, tail2), 4, rag);
+        Shade.part(img, tr(at, new Ellipse2D.Double(94, 44, 10, 10)), rag, 4);
+        Shade.part(img, tr(at, new Rectangle2D.Double(50, 39, 50, 4)), Shade.ramp(new Color(30, 30, 36), 3), 1);   // the strap
+        for (int side = -1; side <= 1; side += 2) {
+            double cx = 75 + side * 12;
+            Shade.part(img, tr(at, new Ellipse2D.Double(cx - 9, 34, 18, 14)), Shade.ramp(new Color(36, 36, 44), 4), 3);
+            Shade.part(img, tr(at, new Ellipse2D.Double(cx - 7, 36, 14, 10)), Shade.ramp(new Color(60, 100, 124), 4), 4);
+            eye(img, tr(at, new Ellipse2D.Double(cx - 3, 39, 6, 4)), (int) cx - 1 + hx, 40 + hy, t);
+            Shade.px(img, (int) cx - 5 + hx, 37 + hy, new Color(200, 230, 240));
+        }
+    }
+
+    /** Grey duct tape wound round and round, a gap left for the eyes. */
+    private static void tape(BufferedImage img, AffineTransform at, int hx, int hy, double t) {
+        Shape head = tr(at, new Ellipse2D.Double(52, 16, 46, 64));
+        Shade.part(img, head, VOID, 0, false, 1);
+        for (int i = 0; i < 10; i++) {
+            double y = 16 + i * 6.6;
+            if (y > 35 && y < 46) continue;                                 // the gap for the eyes
+            double ang = (i % 2 == 0 ? 0.1 : -0.12);
+            Shape strip = AffineTransform.getRotateInstance(ang, 75, y + 3).createTransformedShape(new Rectangle2D.Double(46, y, 58, 7.5));
+            Area a = new Area(at.createTransformedShape(strip));
+            a.intersect(new Area(head));
+            Shade.part(img, a, Shade.ramp(new Color(150 - (i % 3) * 14, 150 - (i % 3) * 14, 156 - (i % 3) * 12), 5), 3);
+        }
+        Shade.part(img, tr(at, new Polygon(new int[]{90, 99, 95}, new int[]{60, 58, 66}, 3)), Shade.ramp(new Color(176, 176, 182), 3), 1);  // a peeling end
+        eye(img, tr(at, new Ellipse2D.Double(60, 39, 9, 5)), 63 + hx, 40 + hy, t);
+        eye(img, tr(at, new Ellipse2D.Double(81, 39, 9, 5)), 84 + hx, 40 + hy, t + 1);
+    }
+
+    /** A cardboard box with the flaps up, holes cut for eyes and a smile drawn on in marker. */
+    private static void box(BufferedImage img, AffineTransform at, int hx, int hy, double t) {
+        Color[] card = Shade.ramp(new Color(178, 134, 86), 5), side = Shade.ramp(new Color(132, 96, 60), 5);
+        Shade.part(img, tr(at, new Polygon(new int[]{98, 108, 108, 98}, new int[]{14, 8, 74, 80}, 4)), side, 2);
+        Shade.part(img, tr(at, new Polygon(new int[]{48, 98, 90, 40}, new int[]{14, 14, 2, 6}, 4)), side, 2);
+        Shade.part(img, tr(at, new Polygon(new int[]{98, 108, 118, 106}, new int[]{14, 8, 0, 4}, 4)), card, 2);
+        Shade.part(img, tr(at, new Rectangle2D.Double(48, 14, 50, 66)), card, 3);
+        Shade.part(img, tr(at, new Rectangle2D.Double(48, 21, 50, 6)), Shade.ramp(new Color(196, 176, 124), 3), 1);   // packing tape
+        Path2D l = new Path2D.Double();
+        l.moveTo(57, 40); l.lineTo(68, 38); l.lineTo(70, 46); l.lineTo(58, 47); l.closePath();
+        Path2D r = new Path2D.Double();
+        r.moveTo(79, 38); r.lineTo(90, 40); r.lineTo(89, 47); r.lineTo(80, 46); r.closePath();
+        eye(img, tr(at, l), 62 + hx, 41 + hy, t);
+        eye(img, tr(at, r), 84 + hx, 41 + hy, t + 1);
+        for (int x = 56; x <= 90; x++) {                                   // the marker smile
+            int y = 60 + (int) Math.round(5 * Math.sin((x - 56) / 34.0 * Math.PI));
+            Shade.rect(img, x + hx, y + hy, 1, 2, INK);
+        }
+        for (int x = 62; x <= 84; x += 5) Shade.rect(img, x + hx, 61 + hy + (int) (4 * Math.sin((x - 56) / 34.0 * Math.PI)), 1, 4, INK);
+        Color red = new Color(150, 40, 36);                                 // "this way up"
+        Shade.rect(img, 91 + hx, 30 + hy, 1, 6, red);
+        Shade.rect(img, 90 + hx, 31 + hy, 3, 1, red);
+        Shade.px(img, 91 + hx, 29 + hy, red);
+    }
+
+    /** A paper grocery bag pulled down over the head, two holes torn in it. */
+    private static void bag(BufferedImage img, AffineTransform at, int hx, int hy, double t) {
+        Color[] paper = Shade.ramp(new Color(198, 166, 118), 5);
+        Path2D b = new Path2D.Double();
+        b.moveTo(50, 80); b.lineTo(47, 40); b.lineTo(49, 12); b.lineTo(101, 12); b.lineTo(103, 44); b.lineTo(100, 80); b.closePath();
+        Shade.part(img, tr(at, b), paper, 5);
+        for (int x : new int[]{56, 94}) {                                   // the folded sides
+            Path2D crease = new Path2D.Double();
+            crease.moveTo(x, 14);
+            crease.lineTo(x + (x < 75 ? -2 : 2), 78);
+            Shade.stroke(img, tr(at, crease), 1.2f, Shade.ramp(new Color(150, 120, 80), 3));
+        }
+        Shade.part(img, tr(at, new Rectangle2D.Double(49, 8, 52, 7)), Shade.ramp(new Color(180, 148, 102), 4), 2);
+        Path2D rim = new Path2D.Double();
+        rim.moveTo(50, 77);
+        rim.quadTo(62, 74, 75, 78);
+        rim.quadTo(88, 82, 100, 77);
+        Shade.stroke(img, tr(at, rim), 5, paper);
+        eye(img, tr(at, new Ellipse2D.Double(59, 37, 10, 9)), 63 + hx, 40 + hy, t);
+        eye(img, tr(at, new Ellipse2D.Double(81, 38, 10, 8)), 85 + hx, 41 + hy, t + 1);
+        for (double a = 0; a < 6.28; a += 0.5) {                            // torn edges
+            Shade.px(img, (int) (64 + Math.cos(a) * 6) + hx, (int) (41 + Math.sin(a) * 5.5) + hy, paper[4]);
+            Shade.px(img, (int) (86 + Math.cos(a) * 6) + hx, (int) (42 + Math.sin(a) * 5) + hy, paper[4]);
+        }
+        Shade.part(img, tr(at, new Ellipse2D.Double(84, 58, 10, 8)), Shade.ramp(new Color(160, 122, 74), 3), 3);   // a grease stain
+    }
+
+    /** A pillowcase tied at the neck with string, a face drawn on it in marker. */
+    private static void pillow(BufferedImage img, AffineTransform at, int hx, int hy, double t) {
+        Color[] cloth = Shade.ramp(new Color(204, 198, 184), 5);
+        Shade.part(img, tr(at, new RoundRectangle2D.Double(48, 10, 54, 72, 22, 22)), cloth, 12);
+        Shade.part(img, tr(at, new Ellipse2D.Double(56, 62, 18, 12)), Shade.ramp(new Color(186, 170, 120), 3), 4);   // an old stain
+        for (int side = -1; side <= 1; side += 2) {
+            int cx = 75 + side * 12;
+            for (double a = 0; a < 6.28; a += 0.25) Shade.px(img, (int) Math.round(cx + Math.cos(a) * 7) + hx, (int) Math.round(40 + Math.sin(a) * 7) + hy, INK);
+            eye(img, tr(at, new Ellipse2D.Double(cx - 3, 38, 6, 5)), cx - 1 + hx, 39 + hy, t);
+        }
+        for (int x = 56; x <= 94; x++) {                                   // a big drawn grin
+            int y = 56 + (int) Math.round(8 * Math.sin((x - 56) / 38.0 * Math.PI));
+            Shade.rect(img, x + hx, y + hy, 1, 2, INK);
+            if (x % 5 == 0) Shade.rect(img, x + hx, y + hy - 3, 1, 3, INK);
+        }
+        Path2D tie = new Path2D.Double();
+        tie.moveTo(50, 78);
+        tie.quadTo(75, 84, 100, 78);
+        Shade.stroke(img, tr(at, tie), 1.6f, ROPE);
+        Shade.part(img, tr(at, new Ellipse2D.Double(92, 78, 8, 5)), ROPE, 2);
+        Shade.part(img, tr(at, new Ellipse2D.Double(99, 79, 8, 5)), ROPE, 2);
+    }
+
+    /** Yours: a paper plate with two eye holes, tied on with string. */
+    private static void plate(BufferedImage img, AffineTransform at, int hx, int hy, double t) {
+        Shade.stroke(img, tr(at, new Line2D.Double(48, 44, 102, 44)), 1.4f, CLOTH);
+        Shade.part(img, tr(at, new Ellipse2D.Double(49, 18, 52, 52)), Shade.ramp(new Color(234, 230, 216), 5), 5);
+        Shade.part(img, tr(at, new Ellipse2D.Double(56, 25, 38, 38)), Shade.ramp(new Color(220, 214, 196), 4), 2);
+        for (double a = 0; a < 6.28; a += 0.21) Shade.px(img, (int) Math.round(75 + Math.cos(a) * 23) + hx, (int) Math.round(44 + Math.sin(a) * 23) + hy, new Color(196, 188, 170));
+        eye(img, tr(at, new Ellipse2D.Double(63, 38, 8, 6)), 66 + hx, 40 + hy, t);
+        eye(img, tr(at, new Ellipse2D.Double(80, 38, 8, 6)), 83 + hx, 40 + hy, t + 1);
+        Shade.rect(img, 70 + hx, 56 + hy, 10, 1, new Color(120, 112, 104));   // a pencil line for a mouth
+    }
+
+    /** A guard's mask: white, with a fixed wide smile, a curled moustache and a thin beard. */
+    private static void smile(BufferedImage img, AffineTransform at, int hx, int hy, double t) {
+        Path2D f = new Path2D.Double();
+        f.moveTo(75, 16);
+        f.curveTo(97, 16, 101, 40, 97, 56);
+        f.curveTo(93, 72, 83, 82, 75, 84);
+        f.curveTo(67, 82, 57, 72, 53, 56);
+        f.curveTo(49, 40, 53, 16, 75, 16);
+        f.closePath();
+        Shade.part(img, tr(at, f), Shade.ramp(new Color(234, 226, 212), 5), 12);
+        Color[] rose = Shade.ramp(new Color(214, 140, 134), 3);
+        Shade.part(img, tr(at, new Ellipse2D.Double(56, 50, 11, 8)), rose, 3);
+        Shade.part(img, tr(at, new Ellipse2D.Double(83, 50, 11, 8)), rose, 3);
+        for (int side = -1; side <= 1; side += 2) {
+            Path2D brow = new Path2D.Double();
+            brow.moveTo(75 + side * 4, 34);
+            brow.quadTo(75 + side * 10, 29, 75 + side * 18, 35);
+            Shade.stroke(img, tr(at, brow), 1.3f, Shade.ramp(INK, 2));
+            double cx = 75 + side * 11;
+            Path2D e = new Path2D.Double();
+            e.moveTo(cx - 6, 42);
+            e.quadTo(cx, 38, cx + 6, 42);
+            e.quadTo(cx, 44, cx - 6, 42);
+            eye(img, tr(at, e), (int) cx - 1 + hx, 41 + hy, t);
+            Path2D tash = new Path2D.Double();                              // the moustache, curling up
+            tash.moveTo(75, 60);
+            tash.quadTo(75 + side * 8, 58, 75 + side * 13, 60);
+            tash.quadTo(75 + side * 17, 58, 75 + side * 17, 53);
+            Shade.stroke(img, tr(at, tash), 2, Shade.ramp(INK, 2));
+        }
+        Path2D grin = new Path2D.Double();
+        grin.moveTo(63, 64);
+        grin.quadTo(75, 72, 87, 64);
+        Shade.stroke(img, tr(at, grin), 1.2f, Shade.ramp(new Color(120, 70, 70), 2));
+        Shade.part(img, tr(at, new Rectangle2D.Double(73.5, 70, 3, 11)), Shade.ramp(INK, 2), 1);   // the thin beard
     }
 
     // ─── Pieces ─────────────────────────────────────────────────
