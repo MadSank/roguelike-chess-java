@@ -145,8 +145,8 @@ public final class PixelArt {
         head(img, who, hx, hy, t);
         if (who.standing) {                                             // arms folded across the chest
             Color[] hand = who.gloves ? GLOVE : SKIN;                        // hands tucked at the elbows
-            Shade.part(img, new Ellipse2D.Double(75 + sx - 32, 99 + by, 10, 9), hand, 3);
-            Shade.part(img, new Ellipse2D.Double(75 + sx + 22, 101 + by, 10, 9), hand, 3);
+            Shade.part(img, new Ellipse2D.Double(75 + sx - 36, 96 + by, 14, 12), hand, 3);
+            Shade.part(img, new Ellipse2D.Double(75 + sx + 23, 100 + by, 14, 12), hand, 3);
         } else {
             hands(img, who, sx, by);
         }
@@ -205,9 +205,11 @@ public final class PixelArt {
             }
         }
         if (standing) {                                                    // forearms folded across the chest, one over the other
-            Shade.stroke(img, new Line2D.Double(c + 39, 114 + by, c - 24, 104 + by), 10, Shade.ramp(dark[1], 4));
-            Shade.stroke(img, new Line2D.Double(c - 39, 114 + by, c + 24, 106 + by), 10, dark);
-            Shade.stroke(img, new Line2D.Double(c - 20, 111 + by, c + 20, 112 + by), 1.2f, shadow);
+            Shade.stroke(img, new Line2D.Double(c + 40, 112 + by, c - 26, 102 + by), 17, Shade.ramp(dark[1], 4));   // the arm underneath
+            Shade.stroke(img, new Line2D.Double(c - 40, 114 + by, c + 26, 106 + by), 17, dark);                      // the arm on top
+            Shade.stroke(img, new Line2D.Double(c - 30, 114 + by, c + 30, 106 + by), 1.3f, shadow);                  // where they cross
+            Shade.stroke(img, new Line2D.Double(c + 20, 99 + by, c + 22, 114 + by), 2.5f, shadow);                   // cuffs
+            Shade.stroke(img, new Line2D.Double(c - 20, 95 + by, c - 22, 110 + by), 2.5f, shadow);
         }
     }
 
