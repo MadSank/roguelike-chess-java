@@ -34,6 +34,10 @@ public class TestCards {
         bishopShift();
         kingsStride();
         timeStop();
+        ironPawns();
+        smuggledPawn();
+        bloodMoney();
+        blindfold();
         TestSupport.finish("TestCards");
     }
 
@@ -51,7 +55,7 @@ public class TestCards {
         System.out.println("-- catalog");
         Set<String> names = new HashSet<>();
         for (Card c : CardCatalog.all()) names.add(c.getName());
-        TestSupport.checkEquals(19, names.size(), "19 distinct cards in the catalog");
+        TestSupport.checkEquals(23, names.size(), "23 distinct cards in the catalog");
         Map<CardCatalog.Rarity, Integer> seen = new EnumMap<>(CardCatalog.Rarity.class);
         Random rng = new Random(3);
         for (int i = 0; i < 2000; i++) {
@@ -269,6 +273,36 @@ public class TestCards {
         TestSupport.checkEquals(null, TestSupport.findMove(new ChessEngine(s), "f6e4"), "paired pawn can't be captured");
         GameState t = with("k7/8/5n2/8/4P3/8/8/K7 b - - 0", new CardPawnPhalanx());
         TestSupport.check(TestSupport.findMove(new ChessEngine(t), "f6e4") != null, "lone pawn can be captured");
+    }
+
+    static void ironPawns() {
+        System.out.println("-- Iron Pawns");
+        GameState s = with("k7/8/8/3p4/4P3/8/8/K7 b - - 0", new CardIronPawns());
+        TestSupport.check(TestSupport.findMove(new ChessEngine(s), "d5e4") == null, "an enemy pawn can't take your pawn");
+        GameState q = with("k7/8/8/3q4/4P3/8/8/K7 b - - 0", new CardIronPawns());
+        TestSupport.check(TestSupport.findMove(new ChessEngine(q), "d5e4") != null, "other pieces still can");
+    }
+
+    static void smuggledPawn() {
+        System.out.println("-- Smuggled Pawn");
+        GameState s = with("k7/8/8/8/8/8/PPP5/K7 w - - 0", new CardSmuggledPawn());
+        TestSupport.quiet(() -> s.cardManager.getActiveCards().get(0).onPlay(s));
+        TestSupport.check(s.board[6][3] instanceof Pawn && s.board[6][3].isWhite(), "a white pawn appears on the second rank, nearest the centre");
+    }
+
+    static void bloodMoney() {
+        System.out.println("-- Blood Money");
+        GameState s = with("k7/8/8/3n4/8/4N3/8/K7 b - - 0", new CardBloodMoney());
+        TestSupport.play(new ChessEngine(s), "d5e3");
+        TestSupport.checkEquals(6, s.goldPlayer, "losing a knight pays twice its value");
+    }
+
+    static void blindfold() {
+        System.out.println("-- Blindfold");
+        GameState s = with("k7/8/8/8/8/8/8/K7 w - - 0", new CardBlindfold());
+        TestSupport.quiet(() -> s.cardManager.getActiveCards().get(0).onPlay(s));
+        TestSupport.checkEquals(1, s.getCounter(CardBlindfold.KEY), "the AI is told to look one move less far");
+        TestSupport.check(new AIPlayer(Difficulty.fixedDepth(1), new java.util.Random(1)).chooseMove(s) != null, "and still finds a move at depth one");
     }
 
     static void goldenEdge() {

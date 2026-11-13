@@ -214,7 +214,7 @@ public class PixelGame extends JPanel {
         if (k == KeyEvent.VK_ENTER || (k == KeyEvent.VK_SPACE && mode != Mode.NAME)) {
             if (talk != null && !talk.done() && mode != Mode.NAME) talk.skip();
             else if (mode == Mode.INTRO) nextIntro();
-            else if (mode == Mode.SWAP) { if (now() - swapStart > 3.7) enterShop(); }
+            else if (mode == Mode.SWAP) { if (swapReady()) enterShop(); }
             else if (cardActions != null && choice < cardActions.length) cardActions[choice].run();
         }
         if (k == KeyEvent.VK_ESCAPE && (mode == Mode.BOARD || mode == Mode.FACE) && !roundEnding) askGiveUp();
@@ -1090,43 +1090,145 @@ public class PixelGame extends JPanel {
             swapFrom = RunController.opponentFor(summary.level) - 1;
             swapTo = RunController.opponentFor(summary.nextLevel) - 1;
             swapStart = now();
+            swapKind = rng.nextInt(TAKEN.length);
             setMode(Mode.SWAP, 0);
+            double a = takeA();
+            switch (swapKind) {                                           // how they take him away, and what you hear
+                case 0:
+                    Music.later("chair", 0.8, 0.5);
+                    Music.steps(3, 1.05, 0.35, 0.45, 0.12);
+                    break;
+                case 1:
+                    Music.later("sob", 1.0, 1.4);
+                    Music.later("chair", 1.0, 0.8);
+                    Music.steps(4, 1.1, 0.25, 0.6, 0.15);
+                    break;
+                case 2:
+                    Music.later("swish", 0.5, 1.2);
+                    Music.later("sob", 0.95, 1.6);
+                    Music.later("sob", 1.35, 1.2);
+                    Music.later("chair", 2.1, 0.7);
+                    Music.later("grind", 2.3, 0.6);                      // dragged across the floor in the dark
+                    Music.steps(3, 2.4, 0.3, 0.5, 0.15);
+                    break;
+                default:
+                    Music.later("latch", 0.6, 1.4);
+                    Music.later("shut", 0.65, 1.0);
+                    Music.later("shut", 1.6, 0.35);                     // far below, he lands
+                    break;
+            }
+            Music.later("chair", a, 0.01);
             Music.sting("lightsout");
-            Music.later("chair", 0.8, 0.5);
-            Music.steps(3, 1.05, 0.35, 0.45, 0.12);
-            Music.steps(3, 2.0, 0.33, 0.12, 0.45);
-            Music.later("chair", 2.95, 0.55);
-            say(null, new String[]{"The lamp gutters out.", ""}, 140);
+            Music.steps(3, a + 0.6, 0.33, 0.12, 0.45);                    // someone new brought in, in the dark
+            Music.later("chair", a + 1.6, 0.55);
+            say(null, new String[]{TAKEN[swapKind], ""}, 140);
         } else {
             enterShop();
         }
     }
 
     /** After a win the lamp dies on the beaten opponent and comes back on the next one. */
+    /** Ways a prisoner who loses is taken away (what you're told; the pictures are in drawSwap). */
+    private static final String[] TAKEN = {
+        "The lamp gutters out.",
+        "Two guards take him under the arms. His feet don't touch the floor.",
+        "A sack comes down over his mask from behind. He fights, then he doesn't.",
+        "Something clanks under the table. His chair is empty before you hear him land.",
+    };
+    private int swapKind;
+
+    /** How long the taking takes before the lamp goes out. */
+    private double takeA() {
+        return swapKind == 0 ? 0.6 : swapKind == 1 ? 2.4 : swapKind == 2 ? 2.0 : 2.2;
+    }
+
+    private boolean swapReady() {
+        return now() - swapStart > takeA() + 3.1;
+    }
+
     private void drawSwap(Graphics2D g, double t) {
-        double k = t - swapStart;
-        boolean second = k > 3.1;
+        double k = t - swapStart, a = takeA();
+        boolean second = k > a + 2.5;
         PixelArt.Person p = PixelArt.OPPONENTS[second ? swapTo : swapFrom];
-        boolean dark = (k > 0.6 && k < 3.1) || (k < 0.6 && Math.sin(k * 47) > 0.2) || (k >= 3.1 && k < 3.7 && Math.sin(k * 41) > 0.1);
+        boolean dark = (k > a && k < a + 2.5) || (swapKind == 0 && k < 0.6 && Math.sin(k * 47) > 0.2) || (k >= a + 2.5 && k < a + 3.1 && Math.sin(k * 41) > 0.1);
         if (dark) {
             Px.rect(g, 0, 0, Px.W, Px.H, new Color(4, 2, 6));
             Px.rect(g, 238, 20, 3, 2, new Color(60, 30, 20));               // the cooling filament
         } else {
             Px.cellar(g, 240, 90, 300, flicker(t));
-            guards(g, t, 36);
-            g.drawImage(PixelArt.person(p, t, null, 0), (Px.W - PixelArt.SPRITE_W) / 2, 50, null);
+            int sx = (Px.W - PixelArt.SPRITE_W) / 2;
+            if (second || swapKind == 0) {
+                guards(g, t, 36);
+                g.drawImage(PixelArt.person(p, t, null, 0), sx, 50, null);
+            } else {
+                takenAway(g, t, k, p, sx);
+            }
             lamp(g, 240, t);
             table(g, 30, 186, 420, 18);
+            if (!second && swapKind == 3 && k > 1.0 && k < 1.9) {                  // dust coming up from under the table
+                double d = (k - 1.0) / 0.9;
+                for (int i = 0; i < 26; i++) {
+                    int x = 190 + (i * 37) % 110 + (int) (Math.sin(i + k * 3) * 4), y = 190 - (int) (d * (20 + i % 7 * 6));
+                    Px.dot(g, x, y, new Color(150, 140, 126, (int) (200 * (1 - d))));
+                }
+            }
         }
-        if (k > 3.7) {
+        if (k > a + 3.1) {
             Music.play("ambient");
             if (!p.name.equals(speaker)) say(p.name, new String[]{"Someone else is sitting in the chair now. Level " + run.getLevel() + ".", ""}, p.voice);
             speechBox(g, 222, 80);
             choices(g, new String[]{"TO THE DEALERS"}, new Runnable[]{this::enterShop}, t);
         } else if (k < 3.1) {
-            Px.centred(g, k < 1.9 ? "The lamp gutters out." : "Footsteps. A chair scrapes.", 240, 300, Px.ASH, 1);
         }
-        hits.add(0, new Hit(new Rectangle(0, 0, Px.W, Px.H), () -> { if (now() - swapStart > 3.7) enterShop(); }));
+        if (k < a + 2.5) {
+            Px.frame(g, 20, 286, 440, 30);
+            Px.wrap(g, k < a ? TAKEN[swapKind] : k < a + 1.2 ? "The lamp gutters out." : "Footsteps. A chair scrapes.", 34, 297, 410, Px.ASH, 999);
+        }
+        hits.add(0, new Hit(new Rectangle(0, 0, Px.W, Px.H), () -> { if (swapReady()) enterShop(); }));
+    }
+
+    /** The beaten prisoner being taken: dragged off, bagged and carried, or dropped through the floor. */
+    private void takenAway(Graphics2D g, double t, double k, PixelArt.Person p, int sx) {
+        int lv = Math.max(1, run.getLevel());
+        PixelArt.Person gl = PixelArt.GUARDS[1 + lv % 4], gr = PixelArt.GUARDS[1 + (lv + 2) % 4];
+        BufferedImage left = inTheDark(PixelArt.person(gl, t + 1.3, null, 0)), right = inTheDark(PixelArt.person(gr, t + 2.1, null, 0));
+        switch (swapKind) {
+            case 1: {                                                          // two guards close in and drag him off
+                double in = ease(0, 0.8, k), off = ease(1.0, 2.2, k) * 380;
+                int lift = k > 0.9 ? -6 : 0;
+                g.drawImage(left, (int) (-22 + 80 * in + off), 36, null);
+                g.drawImage(right, (int) (Px.W - 128 - 80 * in + off), 36, null);
+                g.drawImage(PixelArt.person(p, t, k > 0.9 ? "hurt" : "lose", k > 0.9 ? Math.min(1, (k - 0.9) * 2) : 0.5), (int) (sx + off), 50 + lift, null);
+                break;
+            }
+            case 2: {                                                          // a sack from behind, a struggle, carried off
+                guards(g, t, 36);
+                double up = 0;                                                   // the lamp dies as he slumps; you hear the rest
+                int rise = (int) (14 * ease(0, 0.5, k));
+                g.drawImage(inTheDark(PixelArt.person(PixelArt.GUARDS[2], t, null, 0)), sx, (int) (36 - rise - up), null);
+                int shake = k > 0.9 && k < 1.6 ? (int) (Math.sin(t * 40) * 2) : 0;
+                String pose = k > 1.6 ? "lose" : null;
+                g.drawImage(PixelArt.person(p, t, pose, 0.5), sx + shake, (int) (50 - up), null);
+                double drop = ease(0.5, 0.9, k);
+                int by = (int) (-70 + (50 + 14 + 70) * drop - up);
+                g.setColor(new Color(18, 16, 18));
+                g.fillRoundRect(sx + 49 + shake, by, 52, 62, 22, 22);                // the sack
+                Px.rect(g, sx + 52 + shake, by + 56, 46, 2, new Color(90, 80, 60));  // its drawstring
+                Px.rect(g, sx + 60 + shake, by + 12, 30, 1, new Color(34, 30, 34));
+                break;
+            }
+            default: {                                                         // the floor opens under his chair
+                guards(g, t, 36);
+                double fall = k < 0.7 ? 0 : Math.pow(Math.min(1, (k - 0.7) / 0.3), 2) * 260;
+                if (fall < 250) {
+                    Shape clip = g.getClip();
+                    g.setClip(0, 0, Px.W, 192);
+                    g.drawImage(PixelArt.person(p, t, k > 0.55 ? "hurt" : null, k > 0.55 ? 0.3 : 0), sx, (int) (50 + fall), null);
+                    g.setClip(clip);
+                }
+                break;
+            }
+        }
     }
 
     private void drawOver(Graphics2D g, double t) {
@@ -1728,7 +1830,7 @@ public class PixelGame extends JPanel {
                 p.setMode(Mode.SUMMARY, 0);
                 break;
             }
-            case "swap": p.swapFrom = 0; p.swapTo = 1; p.setMode(Mode.SWAP, 0); p.swapStart = 0; break;
+            case "swap": p.swapFrom = 0; p.swapTo = 1; p.setMode(Mode.SWAP, 0); p.swapStart = 0; p.swapKind = args.length > 2 ? Integer.parseInt(args[2]) : 0; break;
             case "shop0": case "shop1": case "shop2": case "draft": {
                 p.run.getShop().generateCardOfferings(1, new Random(3));
                 p.mode = Mode.CONFIRM;
@@ -1782,7 +1884,7 @@ public class PixelGame extends JPanel {
         BufferedImage img = Px.canvas();
         Graphics2D g = Px.pen(img);
         if (s.equals("open")) Opening.draw(g, Double.parseDouble(args[2]) * Opening.SPB);
-        else p.draw(g, p.mode, s.equals("swap") ? 4.2 : s.equals("menu") ? 3.0 : t);
+        else p.draw(g, p.mode, s.equals("swap") ? (args.length > 3 ? Double.parseDouble(args[3]) : 4.2) : s.equals("menu") ? 3.0 : t);
         g.dispose();
         BufferedImage big = new BufferedImage(Px.W * 2, Px.H * 2, BufferedImage.TYPE_INT_RGB);
         Graphics2D bg = big.createGraphics();

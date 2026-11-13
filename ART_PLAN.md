@@ -93,6 +93,20 @@ neon, flying traffic) and asked for:
 
 ## Status
 (newest first)
+- 2026-11-13 (slimmer, cards, taken away): the user liked it ("excellent music"), asked for slimmer bodies,
+  more cards, more ways losers are taken away, and a knight that looks like a horse.
+  * Bodies: shoulders and sleeves narrowed (about 1.7 heads wide instead of 3), flatter shading; hands
+    and folded arms moved in (`PixelArt.robe/hands/build`).
+  * Knight piece: a horse's head facing left with mane, ear, eye and nostril (`pieceSprite`), and the
+    card emblem's knight likewise (`CardArt.piece`).
+  * New cards (tested in TestCards; catalog now 23): Iron Pawns (common: your pawns can't be taken by
+    pawns), Smuggled Pawn (common: an extra pawn on your second rank), Blood Money (uncommon: losing a
+    piece pays twice its value), Blindfold (uncommon: the AI searches one ply less; `AIPlayer` reads the
+    "blindfold" counter). Emblems for each in `CardArt`.
+  * Taken away (`PixelGame.TAKEN`, `swapKind`, `takenAway`): picked at random after you win: the lamp
+    goes out (as before); two guards drag him off; a sack over his head from behind, a struggle, then
+    dark and the sound of dragging; the floor drops him (a clank, he falls, dust, a far thud). Then the
+    lamp comes back on the next prisoner as before.
 - 2026-11-13 (card faces, hands): `CardArt.java` draws every card: a frame whose metal is its rarity
   (iron, blued steel, gold with gem corners), a night window with an emblem per card (all 19 in
   `emblem()`), an engraved band with a rarity gem, two eyes on global cards. No text on the card; the

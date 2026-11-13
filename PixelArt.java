@@ -134,9 +134,9 @@ public final class PixelArt {
         Color[] robe = Shade.ramp(who.robe, 5), robeDark = Shade.ramp(who.robe.darker(), 5);
         if (who.hood) {                                                 // a peaked hood, its opening deep in shadow
             Path2D hood = new Path2D.Double();
-            hood.moveTo(38 + hx, 92 + hy);
-            hood.curveTo(34 + hx, 50 + hy, 50 + hx, 14 + hy, 75 + hx, 2 + hy);
-            hood.curveTo(100 + hx, 14 + hy, 116 + hx, 50 + hy, 112 + hx, 92 + hy);
+            hood.moveTo(44 + hx, 90 + hy);
+            hood.curveTo(40 + hx, 50 + hy, 52 + hx, 14 + hy, 75 + hx, 2 + hy);
+            hood.curveTo(98 + hx, 14 + hy, 110 + hx, 50 + hy, 106 + hx, 90 + hy);
             hood.closePath();
             Shade.part(img, hood, Shade.ramp(who.robe.darker(), 5), 7);
             Shade.part(img, new Ellipse2D.Double(48 + hx, 14 + hy, 54, 72), Shade.ramp(new Color(30, 20, 32), 3), 0, false, 0.6);
@@ -145,10 +145,10 @@ public final class PixelArt {
         head(img, who, hx, hy, t);
         if (who.standing) {                                             // arms folded across the chest
             Color[] hand = who.gloves ? GLOVE : SKIN;
-            Shade.stroke(img, new Line2D.Double(30 + sx, 116 + by, 98 + sx, 100 + by), 13, robeDark);   // right arm under
-            Shade.part(img, new Ellipse2D.Double(94 + sx, 94 + by, 13, 11), hand, 4);
-            Shade.stroke(img, new Line2D.Double(120 + sx, 116 + by, 52 + sx, 100 + by), 13, robe);       // left arm over
-            Shade.part(img, new Ellipse2D.Double(43 + sx, 94 + by, 13, 11), hand, 4);
+            Shade.stroke(img, new Line2D.Double(44 + sx, 114 + by, 96 + sx, 101 + by), 11, robeDark);   // right arm under
+            Shade.part(img, new Ellipse2D.Double(92 + sx, 95 + by, 11, 10), hand, 3);
+            Shade.stroke(img, new Line2D.Double(106 + sx, 114 + by, 54 + sx, 101 + by), 11, robe);      // left arm over
+            Shade.part(img, new Ellipse2D.Double(47 + sx, 95 + by, 11, 10), hand, 3);
         } else {
             hands(img, who, sx, by);
         }
@@ -157,14 +157,14 @@ public final class PixelArt {
 
     private static void robe(BufferedImage img, Color[] robe, Color[] dark, int sx, int by) {
         Path2D body = new Path2D.Double();
-        body.moveTo(4 + sx, 140);
-        body.curveTo(8 + sx, 108, 16 + sx, 84 + by, 34 + sx, 74 + by);
-        body.curveTo(50 + sx, 66 + by, 100 + sx, 66 + by, 116 + sx, 74 + by);
-        body.curveTo(134 + sx, 84 + by, 142 + sx, 108, 146 + sx, 140);
+        body.moveTo(20 + sx, 140);                                      // lean, sloping shoulders
+        body.curveTo(22 + sx, 112, 30 + sx, 90 + by, 46 + sx, 79 + by);
+        body.curveTo(56 + sx, 73 + by, 94 + sx, 73 + by, 104 + sx, 79 + by);
+        body.curveTo(120 + sx, 90 + by, 128 + sx, 112, 130 + sx, 140);
         body.closePath();
-        Shade.part(img, body, robe, 11);
+        Shade.part(img, body, robe, 6);
         Shade.part(img, new Polygon(new int[]{60 + sx, 90 + sx, 75 + sx}, new int[]{70 + by, 70 + by, 112 + by}, 3), dark, 4);
-        for (int[] f : new int[][]{{30, 96, 22, 138}, {50, 90, 46, 138}, {100, 90, 104, 138}, {120, 96, 128, 138}}) {
+        for (int[] f : new int[][]{{40, 98, 34, 138}, {58, 92, 55, 138}, {92, 92, 95, 138}, {110, 98, 116, 138}}) {
             Path2D fold = new Path2D.Double();
             fold.moveTo(f[0] + sx, f[1] + by);
             fold.quadTo((f[0] + f[2]) / 2.0 + sx + 3, (f[1] + f[3]) / 2.0, f[2] + sx, f[3]);
@@ -174,10 +174,10 @@ public final class PixelArt {
         for (int side = -1; side <= 1; side += 2) {
             double c = 75 + sx;
             Path2D sleeve = new Path2D.Double();
-            sleeve.moveTo(c + side * 50, 80 + by);
-            sleeve.curveTo(c + side * 64, 96 + by, c + side * 62, 118, c + side * 44, 134);
-            sleeve.lineTo(c + side * 22, 132);
-            sleeve.curveTo(c + side * 30, 116, c + side * 36, 98 + by, c + side * 36, 84 + by);
+            sleeve.moveTo(c + side * 34, 82 + by);
+            sleeve.curveTo(c + side * 45, 96 + by, c + side * 44, 118, c + side * 36, 134);
+            sleeve.lineTo(c + side * 19, 132);
+            sleeve.curveTo(c + side * 24, 116, c + side * 27, 98 + by, c + side * 25, 86 + by);
             sleeve.closePath();
             Shade.part(img, sleeve, dark, 6);
         }
@@ -188,7 +188,7 @@ public final class PixelArt {
         Color crease = who.gloves ? new Color(20, 16, 20) : new Color(128, 84, 72);
         int[] len = {10, 12, 11, 8};
         for (int side = -1; side <= 1; side += 2) {
-            double cx = 75 + sx + side * 34;
+            double cx = 75 + sx + side * 27;
             Shade.part(img, new RoundRectangle2D.Double(cx - 12, 122, 24, 10, 6, 6), skin, 3);      // the back of the hand
             for (int f = 0; f < 4; f++) {                                                        // fingers resting on the wood
                 int k = side < 0 ? 3 - f : f;
@@ -741,13 +741,19 @@ public final class PixelArt {
                 Shade.part(img, new Ellipse2D.Double(5, top, 8, 11), wood, 4, true, 0.2);
                 break;
             case 'N':
-                Path2D horse = new Path2D.Double();
-                horse.moveTo(6, top + 12);
-                horse.curveTo(2, top + 10, 3, top + 4, 7, top + 2);
-                horse.lineTo(10, top - 1);
-                horse.curveTo(15, top + 3, 14, top + 9, 12, top + 12);
+                Path2D horse = new Path2D.Double();                        // a horse's head facing left: mane, ear, long nose
+                horse.moveTo(13, top + 14);
+                horse.curveTo(16, top + 8, 15, top + 2, 11.5, top);
+                horse.lineTo(11, top - 3);
+                horse.lineTo(9, top - 0.5);
+                horse.curveTo(6, top, 3, top + 3, 1, top + 6.5);
+                horse.lineTo(1, top + 9);
+                horse.lineTo(4, top + 10);
+                horse.curveTo(6, top + 9, 7.5, top + 10, 7.5, top + 11);
+                horse.curveTo(5.5, top + 12, 5, top + 13.5, 5.5, top + 15);
                 horse.closePath();
-                Shade.part(img, horse, wood, 3, true, 0.2);
+                Shade.part(img, horse, wood, 2, true, 0.2);
+                for (int k = 0; k < 4; k++) Shade.px(img, 13 + (k % 2), top + 2 + k * 3, wood[0]);   // the mane
                 break;
             default:
                 Shade.part(img, new Ellipse2D.Double(5, top, 8, 8), wood, 4, true, 0.2);
@@ -755,7 +761,10 @@ public final class PixelArt {
         }
         if (kind == 'R') for (int i = 0; i < 3; i++) Shade.rect(img, 5 + i * 3, top, 2, 2, new Color(0, 0, 0, 0));
         if (kind == 'B') Shade.rect(img, 9, top + 3, 1, 3, wood[0]);
-        if (kind == 'N') Shade.px(img, 8, top + 4, wood[0]);
+        if (kind == 'N') {
+            Shade.px(img, 6, top + 4, wood[0]);                             // the eye
+            Shade.px(img, 2, top + 8, wood[0]);                             // a nostril
+        }
         return img;
     }
 }

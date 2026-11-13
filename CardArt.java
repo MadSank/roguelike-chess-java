@@ -300,6 +300,37 @@ public final class CardArt {
                 Shade.stroke(img, at(r, s, new Arc2D.Double(3, 1, 30, 30, 200, 110, Arc2D.OPEN)), 1.2f * s, Shade.ramp(GOLD, 3));
                 arrow(img, r, s, 7, 22, -1, -4, GOLD);
                 break;
+            case "Iron Pawns":                                                // an iron pawn, riveted; a pawn broken against it
+                piece(img, r, s, 'P', 20, 31, 24, new Color(120, 124, 134));
+                for (int i = 0; i < 3; i++) part(img, r, s, new Ellipse2D.Double(18.6, 14 + i * 5, 2.2, 2.2), new Color(200, 200, 210), 0);
+                part(img, r, s, new Rectangle2D.Double(4, 28, 7, 4), BONE, 1);
+                part(img, r, s, new Polygon(new int[]{5, 10, 7}, new int[]{27, 26, 21}, 3), BONE, 0.5);
+                line(img, r, s, 11, 20, 14, 22, 0.8f, Color.WHITE);
+                break;
+            case "Smuggled Pawn": {                                           // a pawn half out of a coat pocket
+                Path2D coat = new Path2D.Double();
+                coat.moveTo(2, 34); coat.lineTo(6, 6); coat.lineTo(30, 6); coat.lineTo(34, 34); coat.closePath();
+                part(img, r, s, coat, new Color(70, 62, 66), 2);
+                piece(img, r, s, 'P', 18, 24, 14, BONE);
+                part(img, r, s, new Rectangle2D.Double(9, 20, 18, 12), new Color(56, 50, 54), 1);   // the pocket over its base
+                line(img, r, s, 9, 20, 27, 20, 0.8f, new Color(110, 100, 104));
+                break;
+            }
+            case "Blood Money":                                               // coins, and blood on them
+                for (int i = 0; i < 4; i++) part(img, r, s, new Ellipse2D.Double(8 + (i % 2) * 6, 24 - i * 4, 14, 6), GOLD, 2);
+                part(img, r, s, new Ellipse2D.Double(22, 8, 4, 6), red, 1);
+                part(img, r, s, new Ellipse2D.Double(14, 4, 3, 5), red, 1);
+                part(img, r, s, new Ellipse2D.Double(10, 20, 5, 2), red, 0.5);
+                break;
+            case "Blindfold": {                                               // a cloth tied over two eyes
+                part(img, r, s, new Ellipse2D.Double(6, 6, 24, 26), new Color(60, 48, 46), 3);
+                Path2D band = new Path2D.Double();
+                band.moveTo(2, 14); band.curveTo(12, 10, 24, 10, 34, 14); band.lineTo(34, 21); band.curveTo(24, 17, 12, 17, 2, 21); band.closePath();
+                part(img, r, s, band, new Color(180, 40, 40), 1);
+                line(img, r, s, 30, 20, 34, 30, 1.6f, new Color(160, 34, 34));
+                line(img, r, s, 32, 20, 28, 31, 1.6f, new Color(160, 34, 34));
+                break;
+            }
             default:
                 piece(img, r, s, 'K', 18, 32, 24, BONE);
         }

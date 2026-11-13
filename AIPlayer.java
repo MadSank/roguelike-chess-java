@@ -69,7 +69,8 @@ public class AIPlayer {
         deadline = difficulty.timeLimitMs > 0 ? System.nanoTime() + difficulty.timeLimitMs * 1_000_000L : Long.MAX_VALUE;
 
         Move best = rootMoves.get(0);
-        for (int depth = 1; depth <= difficulty.searchDepth; depth++) {
+        int maxDepth = Math.max(1, difficulty.searchDepth - state.getCounter(CardBlindfold.KEY));   // Blindfold: one less
+        for (int depth = 1; depth <= maxDepth; depth++) {
             try {
                 int alpha = -INFINITY;
                 Move depthBest = null;

@@ -51,7 +51,11 @@ public final class CardCatalog {
         new Entry(CardMinefield::new,         Rarity.UNCOMMON),
         new Entry(CardHeavyArmor::new,        Rarity.UNCOMMON),
         new Entry(CardBloodMoon::new,         Rarity.UNCOMMON),
-        new Entry(CardChronoShift::new,       Rarity.RARE)
+        new Entry(CardChronoShift::new,       Rarity.RARE),
+        new Entry(CardIronPawns::new,         Rarity.COMMON),
+        new Entry(CardSmuggledPawn::new,      Rarity.COMMON),
+        new Entry(CardBloodMoney::new,        Rarity.UNCOMMON),
+        new Entry(CardBlindfold::new,         Rarity.UNCOMMON)
     );
 
     /** A fresh instance of every card. */
