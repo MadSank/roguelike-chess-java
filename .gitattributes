@@ -1,0 +1,7 @@
+# What GitHub's language bar counts. The game itself is Java; these are helpers kept in the repo:
+#   tools/  - the Blender scripts from the early 3D attempt, and the local pixel-art generator (Python)
+#   godot/  - the Godot version that was set aside
+#   *.cmd   - Windows launch / test scripts
+tools/** linguist-vendored
+godot/** linguist-vendored
+*.cmd linguist-detectable=false
