@@ -93,6 +93,10 @@ neon, flying traffic) and asked for:
 
 ## Status
 (newest first)
+- 2026-11-13 (wide smoke break): the user asked not to zoom in: the smoke break now plays in the same wide
+  side view as the walk (the close-up code was removed). He stands under the awning at the start of the
+  skywalk: hand up to light it (stage 4 walker frame), sparks and a flame glow, the ember brightening on
+  each drag, smoke drifting off, the butt dropped and ground out (a foot lifted), then he walks.
 - 2026-11-13 (smoke break): the bathroom idea was dropped ("doesn't convey a bathroom"); the user chose a
   smoke break. Beats 0-16: dark rain and out-of-focus neon; a lighter sparks and fails (2), catches (3),
   its flame lights the hood from below while the face inside stays black; the lid snaps shut (5); drags
