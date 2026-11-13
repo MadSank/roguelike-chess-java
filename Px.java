@@ -140,7 +140,17 @@ public final class Px {
 
     /** The cellar wall: rough bricks fading into purple dark, lit by a pool of lamplight around (lx, ly). */
     public static void cellar(Graphics2D g, int lx, int ly, int radius, double flicker) {
-        BufferedImage wall = WALLS.computeIfAbsent(lx + "," + ly + "," + radius, k -> wall(lx, ly, radius));
+        scene(g, "room", lx, ly, radius, flicker);
+    }
+
+    /**
+     * A backdrop lit by one lamp at (lx, ly): a picture from assets/scenes/<name>.png if there is one
+     * (made with tools/pixelgen), otherwise the brick wall drawn in code. Either way the light falls off
+     * into purple dark the same way.
+     */
+    public static void scene(Graphics2D g, String name, int lx, int ly, int radius, double flicker) {
+        BufferedImage pic = backdrop(name);
+        BufferedImage wall = WALLS.computeIfAbsent(name + "," + lx + "," + ly + "," + radius, k -> pic != null ? litPicture(pic, lx, ly, radius) : wall(lx, ly, radius));
         g.drawImage(wall, 0, 0, null);
         // The light breathing: a few warm specks in the middle of the pool, more when the flame is high.
         g.setColor(new Color(255, 196, 120, (int) (40 * flicker)));
@@ -150,6 +160,37 @@ public final class Px {
                 if (d < 0.6 && (hash(x, y) & 255) < (0.6 - d) * 260 * flicker) g.fillRect(x, y, 1, 1);
             }
         }
+    }
+
+    private static final Map<String, java.util.Optional<BufferedImage>> BACKDROPS = new HashMap<>();
+
+    private static BufferedImage backdrop(String name) {
+        return BACKDROPS.computeIfAbsent(name, n -> {
+            try {
+                java.io.File f = new java.io.File("assets/scenes/" + n + ".png");
+                if (f.exists()) return java.util.Optional.of(javax.imageio.ImageIO.read(f));
+            } catch (java.io.IOException e) {
+                System.err.println("Couldn't read backdrop " + n + ": " + e.getMessage());
+            }
+            return java.util.Optional.empty();
+        }).orElse(null);
+    }
+
+    /** The picture under the lamp: full colour near it, dimming and turning purple-black away from it. */
+    private static BufferedImage litPicture(BufferedImage pic, int lx, int ly, int radius) {
+        BufferedImage img = new BufferedImage(W, H, BufferedImage.TYPE_INT_RGB);
+        Color dark = new Color(10, 6, 14);
+        for (int y = 0; y < H; y++) {
+            for (int x = 0; x < W; x++) {
+                Color c = new Color(pic.getRGB(x * pic.getWidth() / W, y * pic.getHeight() / H));
+                double d = Math.hypot(x - lx, (y - ly) * 1.3) / radius;
+                double light = Math.min(1, Math.pow(Math.max(0, 1 - d), 1.3) * 1.25 + 0.06);
+                light += (BAYER[y & 3][x & 3] / 16.0 - 0.5) * 0.06;                // dithered, not banded
+                Color lit = new Color((int) (c.getRed() * 0.82), (int) (c.getGreen() * 0.78), (int) (c.getBlue() * 0.86));
+                img.setRGB(x, y, Shade.mix(dark, lit, Math.max(0, Math.min(1, light))).getRGB());
+            }
+        }
+        return img;
     }
 
     private static BufferedImage wall(int lx, int ly, int radius) {

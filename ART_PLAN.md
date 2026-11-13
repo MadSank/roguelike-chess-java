@@ -93,6 +93,23 @@ neon, flying traffic) and asked for:
 
 ## Status
 (newest first)
+- 2026-11-13 (generated art for the game): the user said the code-drawn art looked "backward" next to the
+  generated guard and asked for the whole game in that style. Done with the local generator (free):
+  * All 14 characters: `assets/people/*.png` (rag, tape, box, bag, pillow, you, white_smile, gas_guard,
+    beak_guard, goalie_guard, welder_guard, card_dealer, piece_dealer, reseller). Made with
+    `tools/pixelgen/cast.py` (shared style, masks stressed, faces / skulls / tables banned, plain backdrop)
+    and picked by eye; the box prisoner was made by repainting the code-drawn one (`generate.restyle`,
+    image-to-image) because text alone kept putting the box in his hands. PixelArt scales each to about
+    126 px tall. Code-drawn people remain as the fallback if a file is missing.
+  * Backdrops: `assets/scenes/room.png` (behind every table screen, via `Px.cellar` -> `Px.scene`) and
+    `assets/scenes/shop.png` (the dealers), from `tools/pixelgen/scenes.py`, shown through the lamp
+    falloff (`Px.litPicture`). They are 160x120 cells shown at 3x, so their pixels are coarser than the
+    characters'.
+  * Kept in code on purpose: chess pieces (18x28) and card emblems (36x34). `tools/pixelgen/small_test.py`
+    showed generated ones turn to mush at that size. Also still code: the table, counter, lamp, frames,
+    the opening's city and skywalk.
+  * `generate.clean` cutout: flood from the edges using the backdrop's main tone (tol 60, 30 for the box),
+    falling back to several border tones when the first pass removes almost nothing.
 - 2026-11-13 (generated art trial): the user wants free tools only. A local generator runs on their RTX
   4070: ComfyUI + SDXL + pixel-art-xl in C:\ComfyUI, driven by `tools/pixelgen/generate.py` (prompt ->
   raw + cleaned PNG: 8x pixel grid, edge-flood cutout, 32 colours; outputs git-ignored). SpriteCook (paid

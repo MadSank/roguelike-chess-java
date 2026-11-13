@@ -32,14 +32,14 @@ NEGATIVE = ("blurry, photo, photograph, 3d render, text, watermark, signature, f
             "deformed, cropped head, cartoon, chibi, cute, anime, multiple people, gradient background, scenery, circle, vignette, hands in pockets, green")
 
 
-def workflow(prompt, seed, count):
+def workflow(prompt, seed, count, width=1024, height=1024, style=None):
     return {
         "4": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "sd_xl_base_1.0.safetensors"}},
         "10": {"class_type": "LoraLoader", "inputs": {"model": ["4", 0], "clip": ["4", 1], "lora_name": "pixel-art-xl.safetensors",
                                                       "strength_model": 1.0, "strength_clip": 1.0}},
-        "6": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt + ", " + STYLE, "clip": ["10", 1]}},
+        "6": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt + ", " + (STYLE if style is None else style), "clip": ["10", 1]}},
         "7": {"class_type": "CLIPTextEncode", "inputs": {"text": NEGATIVE, "clip": ["10", 1]}},
-        "5": {"class_type": "EmptyLatentImage", "inputs": {"width": 1024, "height": 1024, "batch_size": count}},
+        "5": {"class_type": "EmptyLatentImage", "inputs": {"width": width, "height": height, "batch_size": count}},
         "3": {"class_type": "KSampler", "inputs": {"seed": seed, "steps": 30, "cfg": 6.0, "sampler_name": "dpmpp_2m",
                                                    "scheduler": "karras", "denoise": 1.0, "model": ["10", 0],
                                                    "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["5", 0]}},
@@ -59,8 +59,8 @@ def get(path):
         return r.read()
 
 
-def generate(prompt, count, seed):
-    pid = post("/prompt", {"prompt": workflow(prompt, seed, count)})["prompt_id"]
+def generate(prompt, count, seed, width=1024, height=1024, style=None):
+    pid = post("/prompt", {"prompt": workflow(prompt, seed, count, width, height, style)})["prompt_id"]
     while True:
         hist = json.loads(get("/history/" + pid))
         if pid in hist and hist[pid].get("outputs"):
@@ -73,26 +73,43 @@ def generate(prompt, count, seed):
     return images
 
 
-def clean(raw, grid=8, colours=32):
-    """Shrink to the pixel grid, flood away the background from the edges, cut the palette down."""
+def clean(raw, grid=8, colours=32, tol=60):
+    """Shrink to the pixel grid, flood away the backdrop from the edges, cut the palette down.
+    First tries the backdrop's single main colour; if that leaves almost everything (a shaded or framed
+    backdrop), tries again with all of the border's main tones at a tighter tolerance."""
     w, h = raw.size
     small = raw.convert("RGB").resize((w // grid, h // grid), Image.NEAREST)
     W, H = small.size
     px = small.load()
-    border = [px[x, y] for x in range(W) for y in (0, H - 1)] + [px[x, y] for y in range(H) for x in (0, W - 1)]
-    bg = max(set(border), key=border.count)
+    border = [px[x, y] for x in range(W) for y in (0, 1, H - 2, H - 1)] + [px[x, y] for y in range(H) for x in (0, 1, W - 2, W - 1)]
 
-    def close(c, ref, tol):
-        return abs(c[0] - ref[0]) + abs(c[1] - ref[1]) + abs(c[2] - ref[2]) < tol
+    def flood(tones, tol):
+        gone = [[False] * H for _ in range(W)]
+        stack = [(x, y) for x in range(W) for y in (0, H - 1)] + [(x, y) for y in range(H) for x in (0, W - 1)]
+        while stack:
+            x, y = stack.pop()
+            if x < 0 or y < 0 or x >= W or y >= H or gone[x][y]:
+                continue
+            c = px[x, y]
+            if not any(abs(c[0] - t[0]) + abs(c[1] - t[1]) + abs(c[2] - t[2]) < tol for t in tones):
+                continue
+            gone[x][y] = True
+            stack += [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
+        return gone
 
-    gone = [[False] * H for _ in range(W)]
-    stack = [(x, y) for x in range(W) for y in (0, H - 1)] + [(x, y) for y in range(H) for x in (0, W - 1)]
-    while stack:                                   # everything connected to the edge that looks like the backdrop
-        x, y = stack.pop()
-        if x < 0 or y < 0 or x >= W or y >= H or gone[x][y] or not close(px[x, y], bg, 60):
-            continue
+    main_tone = max(set(border), key=border.count)
+    gone = flood([main_tone], tol)
+    kept = sum(1 for x in range(W) for y in range(H) if not gone[x][y]) / (W * H)
+    if kept > 0.85:
+        groups = {}
+        for c in border:
+            groups.setdefault((c[0] // 24, c[1] // 24, c[2] // 24), []).append(c)
+        tones = [tuple(sum(v[i] for v in g) // len(g) for i in range(3)) for g in groups.values() if len(g) > len(border) * 0.1]
+        gone = flood(tones, 45)
+    specks = [(x, y) for x in range(W) for y in range(H) if not gone[x][y] and
+              sum(1 for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)) if 0 <= x + dx < W and 0 <= y + dy < H and gone[x + dx][y + dy]) >= 4]
+    for x, y in specks:                              # lone leftover pixels only, decided all at once
         gone[x][y] = True
-        stack += [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
     quant = small.quantize(colors=colours, method=Image.Quantize.MEDIANCUT).convert("RGB")
     out = Image.new("RGBA", small.size)
     for y in range(H):
@@ -100,6 +117,46 @@ def clean(raw, grid=8, colours=32):
             out.putpixel((x, y), (0, 0, 0, 0) if gone[x][y] else quant.getpixel((x, y)) + (255,))
     bbox = out.getbbox()
     return out.crop(bbox) if bbox else out
+
+
+def upload(path):
+    """Sends a local image to ComfyUI's input folder; returns the name it is stored under."""
+    boundary = "----ashes" + str(int(time.time() * 1000))
+    crlf = "\r\n"
+    with open(path, "rb") as f:
+        data = f.read()
+    head = ("--" + boundary + crlf + 'Content-Disposition: form-data; name="image"; filename="' + os.path.basename(path) + '"'
+            + crlf + "Content-Type: image/png" + crlf + crlf)
+    tail = (crlf + "--" + boundary + crlf + 'Content-Disposition: form-data; name="overwrite"' + crlf + crlf + "true"
+            + crlf + "--" + boundary + "--" + crlf)
+    body = head.encode() + data + tail.encode()
+    req = urllib.request.Request(SERVER + "/upload/image", data=body, headers={"Content-Type": "multipart/form-data; boundary=" + boundary})
+    with urllib.request.urlopen(req) as r:
+        return json.loads(r.read())["name"]
+
+
+def restyle(prompt, image_path, count, seed, denoise=0.6):
+    """Image-to-image: repaints an existing picture (e.g. a code-drawn sprite, enlarged) in the generator's style,
+    keeping its composition."""
+    name = upload(image_path)
+    wf = workflow(prompt, seed, 1)
+    wf["11"] = {"class_type": "LoadImage", "inputs": {"image": name}}
+    wf["12"] = {"class_type": "VAEEncode", "inputs": {"pixels": ["11", 0], "vae": ["4", 2]}}
+    wf["13"] = {"class_type": "RepeatLatentBatch", "inputs": {"samples": ["12", 0], "amount": count}}
+    wf["3"]["inputs"]["latent_image"] = ["13", 0]
+    wf["3"]["inputs"]["denoise"] = denoise
+    del wf["5"]
+    pid = post("/prompt", {"prompt": wf})["prompt_id"]
+    while True:
+        hist = json.loads(get("/history/" + pid))
+        if pid in hist and hist[pid].get("outputs"):
+            break
+        time.sleep(1.5)
+    out = []
+    for im in hist[pid]["outputs"]["9"]["images"]:
+        q = urllib.parse.urlencode({"filename": im["filename"], "subfolder": im["subfolder"], "type": im["type"]})
+        out.append(get("/view?" + q))
+    return out
 
 
 def main():

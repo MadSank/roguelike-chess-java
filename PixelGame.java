@@ -1446,7 +1446,7 @@ public class PixelGame extends JPanel {
     private void drawShop(Graphics2D g, double t) {
         int shake = anim != null && anim.caught && now() - anim.start > 0.7 && now() - anim.start < 1.0 ? (int) (Math.sin(t * 90) * 4) : 0;
         g.translate(shake, 0);
-        Px.cellar(g, 240, 70, 260, flicker(t));
+        Px.scene(g, "shop", 240, 70, 300, flicker(t));
         g.drawImage(figure(dealerPerson(), t), (Px.W - PixelArt.SPRITE_W) / 2, -8, null);
         table(g, 14, 124, 452, 142);                                      // the counter, deep enough to lay things on
         Px.flame(g, 40, 112, t);
@@ -1782,7 +1782,7 @@ public class PixelGame extends JPanel {
         String s = args[1];
         double t = 0.4;
         switch (s) {
-            case "menu": break;
+            case "menu": p.setMode(Mode.MENU, 0); break;
             case "open": break;
             case "held": case "burn": {
                 p.run.getShop().generateCardOfferings(1, new Random(3));

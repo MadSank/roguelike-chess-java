@@ -148,9 +148,21 @@ public final class PixelArt {
             String file = n.toLowerCase().replaceFirst("^the ", "").replace(' ', '_') + ".png";
             try {
                 java.io.File f = new java.io.File("assets/people/" + file);
-                if (f.exists()) return java.util.Optional.of(javax.imageio.ImageIO.read(f));
+                BufferedImage pic = null;
+                if (f.exists()) pic = javax.imageio.ImageIO.read(f);
                 java.net.URL u = PixelArt.class.getResource("/assets/people/" + file);
-                if (u != null) return java.util.Optional.of(javax.imageio.ImageIO.read(u));
+                if (pic == null && u != null) pic = javax.imageio.ImageIO.read(u);
+                if (pic == null) return java.util.Optional.empty();
+                double k = Math.min(126.0 / pic.getHeight(), 146.0 / pic.getWidth());   // everyone about the same height
+                if (Math.abs(k - 1) > 0.08) {
+                    BufferedImage scaled = new BufferedImage((int) Math.round(pic.getWidth() * k), (int) Math.round(pic.getHeight() * k), BufferedImage.TYPE_INT_ARGB);
+                    java.awt.Graphics2D g = scaled.createGraphics();
+                    g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+                    g.drawImage(pic, 0, 0, scaled.getWidth(), scaled.getHeight(), null);
+                    g.dispose();
+                    pic = scaled;
+                }
+                return java.util.Optional.of(pic);
             } catch (java.io.IOException e) {
                 System.err.println("Couldn't read " + file + ": " + e.getMessage());
             }
