@@ -93,6 +93,13 @@ neon, flying traffic) and asked for:
 
 ## Status
 (newest first)
+- 2026-11-13 (generated art trial): the user wants free tools only. A local generator runs on their RTX
+  4070: ComfyUI + SDXL + pixel-art-xl in C:\ComfyUI, driven by `tools/pixelgen/generate.py` (prompt ->
+  raw + cleaned PNG: 8x pixel grid, edge-flood cutout, 32 colours; outputs git-ignored). SpriteCook (paid
+  credits) made one comparison image only. `PixelArt.person` now uses `assets/people/<name>.png` when it
+  exists (name lower-cased, "the " dropped, spaces to underscores), placed bottom-centre in the 150x140
+  sprite and moved whole for breathing / reactions; otherwise it draws in code. First one: the Beak Guard
+  (`assets/people/beak_guard.png`). Waiting on the user before doing the rest of the cast.
 - 2026-11-13 (slimmer, cards, taken away): the user liked it ("excellent music"), asked for slimmer bodies,
   more cards, more ways losers are taken away, and a knight that looks like a horse.
   * Bodies: shoulders and sleeves narrowed (about 1.7 heads wide instead of 3), flatter shading; hands
