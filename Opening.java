@@ -13,7 +13,7 @@ import java.util.Random;
  *   beats   0-16   seen from the same distance as the walk: under a torn awning in hard rain, the guard
  *                  tries to light a cigarette. Two misses, a light the rain hisses out, two weak sparks, a
  *                  flame the rain kills. He lowers the lighter, his head drops, his shoulders shake. He snaps
- *                  it shut, drops the soaked cigarette, grinds it out, wipes his face and walks.
+ *                  it shut, flicks the soaked cigarette away over the rail, wipes his face and walks.
  *   beats  16-100  he walks out from under the awning and across a skywalk
  *                  through an overcrowded, rotting megacity (towers in haze, a shaft of light from above,
  *                  traffic, neon, beggars, rubbish heaps, fires in drums, rats, graffiti, a propaganda
@@ -541,10 +541,6 @@ public final class Opening {
             }
             Px.rect(g, bx + 94, 150, 3, 122, new Color(40, 44, 44));                               // a drainpipe, overflowing
             for (int k = 0; k < 4; k++) Px.dot(g, bx + 95, 272 + (int) ((t * 50 + k * 4) % 12), new Color(150, 170, 170));
-            if (b > 13.9) {                                                                       // the butt he ground out
-                Px.rect(g, bx + 82, FLOOR - 2, 6, 1, new Color(30, 26, 22));
-                Px.rect(g, bx + 84, FLOOR - 2, 2, 1, new Color(190, 182, 168));
-            }
         }
         // filth: litter everywhere, rubbish heaps with flies, graffiti, beggars, a fire in a barrel, rats
         filth(g, b, t, cam);
@@ -601,13 +597,13 @@ public final class Opening {
             g.drawImage(s, x + s.getWidth(), FLOOR - 4 - 88, -s.getWidth(), s.getHeight(), null);
         }
         if (b < 99.9) {
-            boolean handUp = (b > 1.6 && b < 4.9) || (b > 5.6 && b < 8.5) || (b > 14.6 && b < 15.3);    // lighting it; wiping his face
+            boolean handUp = (b > 1.6 && b < 4.9) || (b > 5.6 && b < 8.5) || (b > 12.4 && b < 12.7) || (b > 14.6 && b < 15.3);   // lighting it; flicking it away; wiping his face
             boolean bowed = b > 8.6 && b < 12.4;                                               // the head drops
             int stage = b < 16 ? (handUp ? 4 : bowed ? 5 : 0) : b < 97 ? 0 : b < 97.4 ? 1 : b < 97.8 ? 2 : 3;
             boolean walking = (b >= 16.5 && b <= 95.5) || b > 99;
             double p = ((b - 17) / 2 + 0.25) % 1;
             if (p < 0) p += 1;
-            int frame = walking ? (int) (p * 12) % 12 : b > 13.5 && b < 14.4 ? 2 : -1;   // a foot lifted to grind the butt out
+            int frame = walking ? (int) (p * 12) % 12 : -1;
             int shake = b > 8.8 && b < 12.4 && near(b, SOBS, 0.3) && Math.sin(t * 36) > 0 ? 1 : 0;   // his shoulders shake
             g.drawImage(walker(frame, stage), (int) walkerX(b) - cam - 21, FLOOR - 88 + shake, null);
             if (b < 16) smoking(g, b, t, cam);
@@ -650,7 +646,7 @@ public final class Opening {
             Px.rect(g, mx + 2, my - 2, 1, 3, new Color(255, 240, 180));
             Px.rect(g, mx + 1, my, 3, 1, new Color(250, 140, 50));
         }
-        boolean inMouth = b > 2 && b < 12.5;
+        boolean inMouth = b > 2 && b < 12.55;
         int droop = b > 8.6 ? 2 : 0;                                                       // it hangs from his lip
         if (inMouth) {
             Px.rect(g, mx, my + 1 + droop / 2, 2, 1, new Color(196, 188, 170));
@@ -669,10 +665,13 @@ public final class Opening {
             double age = b - 8.3;
             for (int k = 0; k < 5; k++) Px.dot(g, mx + 2 + (int) (Math.sin(age * 5 + k) * 1.5), my - 3 - k * 2 - (int) (age * 6), new Color(170, 170, 178, (int) (120 * (1 - age / 1.1))));
         }
-        if (b >= 12.5 && b < 13.6) {                                                       // dropped, soaked
-            double k = Math.min(1, (b - 12.5) / 0.7);
-            int x = mx + 3 + (int) (k * 6), y = (int) (my + 2 + (FLOOR - 3 - my) * k * k);
-            Px.rect(g, x, y, 3, 1, new Color(180, 174, 160));
+        if (b >= 12.6 && b < 15) {                                                         // flicked away: out over the rail, down into the drop
+            double s2 = (b - 12.6) * SPB;
+            int x = mx + 4 + (int) (s2 * 70), y = (int) (my - 2 - s2 * 60 + s2 * s2 * 140);
+            if (y < H) {
+                boolean spin = ((int) (b * 12)) % 2 == 0;
+                Px.rect(g, x, y, spin ? 3 : 1, spin ? 1 : 2, new Color(186, 180, 166));
+            }
         }
     }
 

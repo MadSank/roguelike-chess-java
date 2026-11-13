@@ -122,7 +122,7 @@ public final class Music {
 
     static {
         // ── The opening: a bathroom, the skywalk, the game room. His footsteps become the beat ──
-        //  0-16 in hard rain he tries to light a cigarette and can't; he breaks down; grinds it out / 16-96 the walk, one step a beat:
+        //  0-16 in hard rain he tries to light a cigarette and can't; he breaks down; flicks it away / 16-96 the walk, one step a beat:
         //  steps alone, then a kick under them (32), the table's bass and his keys (48), organ and
         //  music box (64), the melody (80) / 96 he stops at the door / 100-116 the room, heartbeat.
         Song op = new Song("opening", OPENING_BPM, OPENING_BEATS, false, 0, 0.12);
@@ -144,7 +144,7 @@ public final class Music {
         ol.add(new Note("sizzle", 8.3, 1.0));                              // killed before it lights anything
         for (double sb : new double[]{9.0, 9.7, 10.4, 11.3, 11.9}) ol.add(new Note("sob", sb, 3.6));   // he breaks down
         ol.add(new Note("clack", 12.3, 1.7));                              // snaps the lighter shut
-        ol.add(new Note("grind", 13.6, 1.7));                              // grinds the wet cigarette out
+        ol.add(new Note("swish", 12.55, 1.6));                             // flicks it away into the rain
         ol.add(new Note("exhale", 14.7, 1.4));                             // a long breath, a sleeve across his face
         ol.add(new Note(Inst.RAIN, 15, 85, 0.35, 0));
         ol.add(new Note(Inst.CITY, 14, 90, 1.0, 0));
@@ -722,6 +722,14 @@ public final class Music {
                 }
                 break;
             }
+            case "swish": {                                                 // a sleeve flicking something away
+                n = (int) (RATE * 0.3);
+                for (int i = 0; i < n; i++) {
+                    double t = (double) i / RATE;
+                    b[i] = (float) (f.band(r.nextDouble() * 2 - 1, 900 + 2600 * t / 0.3, 0.8) * Math.sin(Math.PI * t / 0.3) * 0.45);
+                }
+                break;
+            }
             case "sob": {                                                   // a breath that catches and shakes: crying, held in
                 n = (int) (RATE * 0.55);
                 for (int i = 0; i < n; i++) {
@@ -1167,7 +1175,7 @@ public final class Music {
             write(new java.io.File(dir, s.name + ".wav"), all);
             System.out.println(s.name + ": " + String.format("%.1f", all.length / (double) RATE) + " s, rendered in " + (System.currentTimeMillis() - t0) + " ms");
         }
-        for (String e : new String[]{"flick", "catch", "clack", "drag", "exhale", "sizzle", "grind", "sob", "latch", "door", "shut", "move", "capture", "check", "coin", "deny", "card", "step1", "step2", "step3", "drip", "creak", "chair", "hiss", "crack", "sparks"}) write(new java.io.File(dir, "sfx_" + e + ".wav"), makeSfx(e));
+        for (String e : new String[]{"flick", "catch", "clack", "drag", "exhale", "sizzle", "grind", "sob", "swish", "latch", "door", "shut", "move", "capture", "check", "coin", "deny", "card", "step1", "step2", "step3", "drip", "creak", "chair", "hiss", "crack", "sparks"}) write(new java.io.File(dir, "sfx_" + e + ".wav"), makeSfx(e));
     }
 
     private static void write(java.io.File f, float[] x) throws Exception {
