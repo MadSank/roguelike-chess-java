@@ -122,19 +122,19 @@ public final class Music {
 
     static {
         // ── The opening: a bathroom, the skywalk, the game room. His footsteps become the beat ──
-        //  0-16 bathroom (tap, scrubbing, towel, latch, door) / 16-96 the walk, one step a beat:
+        //  0-16 bathroom (a buzzing tube, drips, a hand dryer, the latch, the door) / 16-96 the walk, one step a beat:
         //  steps alone, then a kick under them (32), the table's bass and his keys (48), organ and
         //  music box (64), the melody (80) / 96 he stops at the door / 100-116 the room, heartbeat.
         Song op = new Song("opening", OPENING_BPM, OPENING_BEATS, false, 0, 0.12);
         op.normFrom = 80;
         op.normTo = 96;
         List<Note> ol = op.layer(0);
-        ol.add(new Note("water", 0.5, 2.2));
-        ol.add(new Note("scrub", 2, 2.0));
-        ol.add(new Note("squeak", 10.2, 1.8));
+        ol.add(new Note("hum", 0, 1.0));                                   // the tube, crackling when it flickers on screen
+        ol.add(new Note("drip", 0.6, 1.4));
+        ol.add(new Note("dryer", 1.5, 1.6));                               // hands under a roaring dryer
         ol.add(new Note("drip", 11, 1.6));
-        ol.add(new Note("towel", 12, 1.8));
-        ol.add(new Note("drip", 12.6, 1.2));
+        ol.add(new Note("drip", 12.2, 1.2));
+        ol.add(new Note("drip", 13.4, 1.4));
         ol.add(new Note("latch", 14.3, 0.9));
         ol.add(new Note("door", 15, 0.9));
         ol.add(new Note(Inst.CITY, 15, 89, 1.0, 0));
@@ -245,6 +245,13 @@ public final class Music {
     }
 
     // ════════ Synthesis ══════════════════════════════════════════
+    /** The same hash the opening's pictures use, so sounds can follow what flickers on screen. */
+    private static int hash(int x, int y) {
+        int h = x * 73856093 ^ y * 19349663;
+        h = (h ^ (h >>> 13)) * 1274126177;
+        return (h ^ (h >>> 16)) & 0x7fffffff;
+    }
+
     private static double blep(double t, double dt) {
         if (t < dt) { t /= dt; return t + t - t * t - 1; }
         if (t > 1 - dt) { t = (t - 1) / dt; return t * t + t + t + 1; }
@@ -539,7 +546,7 @@ public final class Music {
     private static final Map<String, float[]> SFX = new HashMap<>();
 
     private static float[] makeSfx(String name) {
-        float[] b = new float[8 * RATE];
+        float[] b = new float[10 * RATE];
         Filter f = new Filter(), f2 = new Filter();
         Random r = new Random(name.hashCode());
         int n;
@@ -664,6 +671,35 @@ public final class Music {
                 }
                 break;
             }
+            case "dryer": {                                                 // a hand dryer: motor spins up, air roars, hands move in it
+                n = (int) (RATE * 5.8);
+                double ph = 0, ph2 = 0;
+                for (int i = 0; i < n; i++) {
+                    double t = (double) i / RATE, noise = r.nextDouble() * 2 - 1;
+                    double spin = t < 0.6 ? t / 0.6 : t > 5.0 ? Math.max(0, (5.8 - t) / 0.8) : 1;
+                    double hands = t > 1.0 && t < 4.8 ? 1 + 0.4 * Math.sin(t * 2.6 + Math.sin(t * 1.1) * 2) : 1;
+                    double air = (f.low(noise, 200 + 1700 * spin) * 1.2 - f2.low(noise, 150) * 0.5) * hands;
+                    ph = (ph + 95 * spin / RATE) % 1;
+                    ph2 = (ph2 + 1150 * spin / RATE) % 1;
+                    double motor = Math.sin(2 * Math.PI * ph) * 0.6 + Math.sin(4 * Math.PI * ph) * 0.3 + Math.sin(6 * Math.PI * ph + 0.5) * 0.15;
+                    double whine = Math.sin(2 * Math.PI * ph2) * 0.05;
+                    b[i] = (float) ((air * 0.55 * Math.pow(spin, 1.5) + motor * 0.12 * spin + whine * spin) * 0.6);
+                }
+                break;
+            }
+            case "hum": {                                                   // a fluorescent tube; crackles when the picture flickers
+                n = (int) (RATE * 9.4);
+                double ph = 0;
+                for (int i = 0; i < n; i++) {
+                    double t = (double) i / RATE, beat = t / (60.0 / OPENING_BPM), noise = r.nextDouble() * 2 - 1;
+                    ph = (ph + 100.0 / RATE) % 1;
+                    double buzz = f.low((ph < 0.5 ? 0.3 : -0.3) + Math.sin(4 * Math.PI * ph) * 0.2, 900);
+                    boolean dip = hash((int) (beat * 6), 7) % 11 == 0 || (beat > 10.4 && beat < 10.6);
+                    double crackle = dip ? f2.band(noise, 3000, 0.6) * 0.8 : 0;
+                    b[i] = (float) ((buzz * (dip ? 0.4 : 1) + crackle) * 0.05 * Math.min(1, (9.4 - t) / 0.4));
+                }
+                break;
+            }
             case "water": {                                                 // a tap running
                 n = RATE * 6;
                 for (int i = 0; i < n; i++) {
@@ -734,7 +770,7 @@ public final class Music {
             }
             default: n = 1;
         }
-        if (name.equals("door") || name.equals("shut") || name.equals("latch") || name.equals("squeak") || name.equals("towel")) {
+        if (name.equals("dryer") || name.equals("door") || name.equals("shut") || name.equals("latch") || name.equals("squeak") || name.equals("towel")) {
             float[] wet = Arrays.copyOf(b, n + RATE);                        // a small tiled room
             reverb(wet, 0.3);
             return trim(wet);
@@ -1030,7 +1066,7 @@ public final class Music {
             write(new java.io.File(dir, s.name + ".wav"), all);
             System.out.println(s.name + ": " + String.format("%.1f", all.length / (double) RATE) + " s, rendered in " + (System.currentTimeMillis() - t0) + " ms");
         }
-        for (String e : new String[]{"water", "scrub", "squeak", "towel", "latch", "door", "shut", "move", "capture", "check", "coin", "deny", "card", "step1", "step2", "step3", "drip", "creak", "chair", "hiss", "crack", "sparks"}) write(new java.io.File(dir, "sfx_" + e + ".wav"), makeSfx(e));
+        for (String e : new String[]{"dryer", "hum", "latch", "door", "shut", "move", "capture", "check", "coin", "deny", "card", "step1", "step2", "step3", "drip", "creak", "chair", "hiss", "crack", "sparks"}) write(new java.io.File(dir, "sfx_" + e + ".wav"), makeSfx(e));
     }
 
     private static void write(java.io.File f, float[] x) throws Exception {

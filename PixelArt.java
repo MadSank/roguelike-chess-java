@@ -138,7 +138,7 @@ public final class PixelArt {
             hood.curveTo(34 + hx, 50 + hy, 50 + hx, 14 + hy, 75 + hx, 2 + hy);
             hood.curveTo(100 + hx, 14 + hy, 116 + hx, 50 + hy, 112 + hx, 92 + hy);
             hood.closePath();
-            Shade.part(img, hood, Shade.ramp(who.robe.darker(), 5), 16);
+            Shade.part(img, hood, Shade.ramp(who.robe.darker(), 5), 7);
             Shade.part(img, new Ellipse2D.Double(48 + hx, 14 + hy, 54, 72), Shade.ramp(new Color(30, 20, 32), 3), 0, false, 0.6);
         }
         robe(img, robe, robeDark, sx, by);
@@ -162,7 +162,7 @@ public final class PixelArt {
         body.curveTo(50 + sx, 66 + by, 100 + sx, 66 + by, 116 + sx, 74 + by);
         body.curveTo(134 + sx, 84 + by, 142 + sx, 108, 146 + sx, 140);
         body.closePath();
-        Shade.part(img, body, robe, 26);
+        Shade.part(img, body, robe, 11);
         Shade.part(img, new Polygon(new int[]{60 + sx, 90 + sx, 75 + sx}, new int[]{70 + by, 70 + by, 112 + by}, 3), dark, 4);
         for (int[] f : new int[][]{{30, 96, 22, 138}, {50, 90, 46, 138}, {100, 90, 104, 138}, {120, 96, 128, 138}}) {
             Path2D fold = new Path2D.Double();
@@ -179,20 +179,24 @@ public final class PixelArt {
             sleeve.lineTo(c + side * 22, 132);
             sleeve.curveTo(c + side * 30, 116, c + side * 36, 98 + by, c + side * 36, 84 + by);
             sleeve.closePath();
-            Shade.part(img, sleeve, dark, 12);
+            Shade.part(img, sleeve, dark, 6);
         }
     }
 
     private static void hands(BufferedImage img, Person who, int sx, int by) {
         Color[] skin = who.gloves ? GLOVE : SKIN;
+        Color crease = who.gloves ? new Color(20, 16, 20) : new Color(128, 84, 72);
+        int[] len = {10, 12, 11, 8};
         for (int side = -1; side <= 1; side += 2) {
             double cx = 75 + sx + side * 34;
-            Shade.part(img, new Ellipse2D.Double(cx - 13, 124, 26, 11), skin, 5);
-            for (int f = 0; f < 4; f++) {                              // long fingers splayed on the wood
-                double fx = cx - 10 + f * 6 + side * 1;
-                Shade.part(img, new RoundRectangle2D.Double(fx, 129, 4, 10 - Math.abs(f - 1.5), 4, 4), skin, 2);
+            Shade.part(img, new RoundRectangle2D.Double(cx - 12, 122, 24, 10, 6, 6), skin, 3);      // the back of the hand
+            for (int f = 0; f < 4; f++) {                                                        // fingers resting on the wood
+                int k = side < 0 ? 3 - f : f;
+                double fx = cx - 11 + f * 5.5;
+                Shade.part(img, new RoundRectangle2D.Double(fx, 127, 4.5, len[k], 3, 3), skin, 1.5);
             }
-            Shade.part(img, new Ellipse2D.Double(cx + side * 12 - 3, 124, 7, 6), skin, 2);   // thumb
+            Shade.rect(img, (int) cx - 10, 131, 21, 1, crease);                                 // the knuckle line
+            Shade.part(img, new RoundRectangle2D.Double(cx + side * 12 - 2.5, 121, 5, 9, 3, 3), skin, 1.5);   // thumb
         }
     }
 
@@ -229,77 +233,170 @@ public final class PixelArt {
         }
     }
 
+    private static int hash(int x, int y) {
+        int h = x * 73856093 ^ y * 19349663;
+        h = (h ^ (h >>> 13)) * 1274126177;
+        return (h ^ (h >>> 16)) & 0x7fffffff;
+    }
+
+    /** Dirt on a surface: dark specks, and streaks running down. */
+    private static void grime(BufferedImage img, Shape s, double amount, int seed) {
+        Rectangle r = s.getBounds().intersection(new Rectangle(0, 0, img.getWidth(), img.getHeight()));
+        Color dirt = new Color(22, 16, 14);
+        for (int y = r.y; y < r.y + r.height; y++) {
+            for (int x = r.x; x < r.x + r.width; x++) {
+                if (!s.contains(x + 0.5, y + 0.5)) continue;
+                int argb = img.getRGB(x, y);
+                if ((argb >>> 24) == 0) continue;
+                int h = hash(x * 7 + seed, y * 13);
+                double d = h % 1000 < amount * 1000 ? 0.16 + (h >> 10 & 7) * 0.03 : 0;
+                if (hash(x + seed, 3) % 7 == 0 && (y + hash(x, seed)) % 13 < 7) d = Math.max(d, 0.13);
+                if (d > 0) img.setRGB(x, y, Shade.mix(new Color(argb), dirt, d).getRGB());
+            }
+        }
+    }
+
+    /** A stitched seam: short dark dashes with a lit edge. */
+    private static void stitch(BufferedImage img, Shape path, int hx, int hy) {
+        java.awt.geom.PathIterator it = path.getPathIterator(null, 0.5);
+        double[] c = new double[6];
+        double px = 0, py = 0, run = 0;
+        while (!it.isDone()) {
+            int type = it.currentSegment(c);
+            if (type == java.awt.geom.PathIterator.SEG_LINETO) {
+                double dx = c[0] - px, dy = c[1] - py, len = Math.hypot(dx, dy);
+                for (double k = 0; k < len; k += 1) {
+                    double x = px + dx * k / len, y = py + dy * k / len;
+                    if ((int) (run + k) % 4 < 2) {
+                        Shade.px(img, (int) x + hx, (int) y + hy, new Color(18, 12, 10));
+                        Shade.px(img, (int) x + hx + 1, (int) y + hy, new Color(150, 120, 96));
+                    }
+                }
+                run += len;
+            }
+            px = c[0];
+            py = c[1];
+            it.next();
+        }
+    }
+
     private static Shape tr(AffineTransform at, Shape s) {
         return at.createTransformedShape(s);
     }
 
     // ─── The masks ──────────────────────────────────────────────
+    /** A soviet-style rubber gas hood: wrinkled, two ringed eyepieces, a valve box and a ribbed hose. */
     private static void gas(BufferedImage img, AffineTransform at, int hx, int hy, double t) {
-        Shade.part(img, tr(at, new Ellipse2D.Double(50, 18, 50, 60)), RUBBER, 16);
-        Shade.part(img, tr(at, new Rectangle2D.Double(48, 38, 54, 4)), Shade.ramp(new Color(60, 50, 40), 3), 2);   // the strap
+        Color[] rubber = Shade.ramp(new Color(60, 66, 58), 5);
+        Path2D h = new Path2D.Double();
+        h.moveTo(54, 84); h.curveTo(46, 60, 48, 14, 75, 12); h.curveTo(102, 14, 104, 60, 96, 84); h.closePath();
+        Shape hood = tr(at, h);
+        Shade.part(img, hood, rubber, 6);
+        for (double[] w : new double[][]{{56, 54, 61, 72}, {94, 54, 89, 72}, {60, 22, 90, 22}, {58, 78, 92, 80}}) {   // folds in the rubber
+            Path2D f = new Path2D.Double();
+            f.moveTo(w[0], w[1]);
+            f.quadTo((w[0] + w[2]) / 2 + 2, (w[1] + w[3]) / 2 + 2, w[2], w[3]);
+            Shade.stroke(img, tr(at, f), 1.2f, Shade.ramp(new Color(34, 38, 32), 2));
+        }
         for (int side = -1; side <= 1; side += 2) {
             double cx = 75 + side * 12;
-            Shade.part(img, tr(at, new Ellipse2D.Double(cx - 10, 34, 20, 20)), BRASS, 5);
-            Shade.part(img, tr(at, new Ellipse2D.Double(cx - 7, 37, 14, 14)), GLASS, 7);
-            eye(img, tr(at, new Ellipse2D.Double(cx - 3, 42, 6, 5)), (int) cx - 2 + hx, 41 + hy, t);
-            Shade.px(img, (int) cx - 5 + hx, 39 + hy, new Color(200, 230, 220));
+            Shade.part(img, tr(at, new Ellipse2D.Double(cx - 10, 28, 20, 20)), Shade.ramp(new Color(96, 96, 100), 4), 1);
+            Shade.part(img, tr(at, new Ellipse2D.Double(cx - 8, 30, 16, 16)), Shade.ramp(new Color(28, 30, 30), 2), 0, false, 1);
+            Shade.part(img, tr(at, new Ellipse2D.Double(cx - 7, 31, 14, 14)), Shade.ramp(new Color(30, 46, 46), 3), 1);
+            eye(img, tr(at, new Ellipse2D.Double(cx - 3, 37, 6, 4)), (int) cx - 1 + hx, 38 + hy, t);
+            for (int k = 0; k < 4; k++) Shade.px(img, (int) cx - 5 + k + hx, 34 + k + hy, new Color(170, 196, 190));   // a hard reflection
         }
-        Shade.part(img, tr(at, new Ellipse2D.Double(64, 56, 22, 20)), METAL, 8);    // the filter snout
-        for (int i = 0; i < 4; i++) Shade.rect(img, 68 + i * 4 + hx, 60 + hy, 1, 12, new Color(60, 58, 64));
-        Path2D hose = new Path2D.Double();
-        hose.moveTo(78, 74);
-        hose.curveTo(84, 92, 100, 96, 104, 120);
-        Shade.stroke(img, tr(at, hose), 9, RUBBER);
-        for (int i = 0; i < 7; i++) {
-            double k = i / 7.0;
-            int x = (int) (80 + 24 * k * k + 4 * k), y = (int) (78 + 40 * k);
-            Shade.rect(img, x - 3 + hx, y + hy, 7, 1, new Color(48, 46, 40));
+        Shade.part(img, tr(at, new Ellipse2D.Double(63, 54, 24, 22)), Shade.ramp(new Color(76, 78, 82), 4), 2);   // the filter, screwed on
+        Shade.part(img, tr(at, new Ellipse2D.Double(67, 58, 16, 14)), Shade.ramp(new Color(46, 48, 50), 3), 1);
+        for (double a = 0; a < 6.28; a += 0.5) Shade.px(img, (int) Math.round(75 + Math.cos(a) * 11) + hx, (int) Math.round(65 + Math.sin(a) * 10) + hy, new Color(30, 30, 32));
+        for (int k = 0; k < 5; k++) Shade.px(img, 71 + k * 2 + hx, 65 + hy, new Color(16, 16, 18));
+        double[][] ribs = new double[22][];
+        for (int i = 0; i < ribs.length; i++) {                                             // the hose, rib by rib
+            double k = i / (double) (ribs.length - 1);
+            double x = (1 - k) * (1 - k) * 75 + 2 * (1 - k) * k * 96 + k * k * 106, y = (1 - k) * (1 - k) * 72 + 2 * (1 - k) * k * 92 + k * k * 126;
+            Shade.part(img, tr(at, new Ellipse2D.Double(x - 4.5, y - 2.5, 9, 5)), i % 2 == 0 ? Shade.ramp(new Color(48, 52, 46), 4) : Shade.ramp(new Color(26, 28, 24), 3), 1);
         }
+        grime(img, hood, 0.05, 3);
     }
 
+
+    /** A plague doctor: a leather hood sewn to a long tapering beak, glass eyes in brass, a flat hat. */
     private static void plague(BufferedImage img, AffineTransform at, int hx, int hy, double t) {
-        Shade.part(img, tr(at, new Ellipse2D.Double(52, 22, 46, 56)), LEATHER, 14);
+        Color[] leather = Shade.ramp(new Color(40, 30, 28), 5);
+        Path2D h = new Path2D.Double();
+        h.moveTo(50, 86); h.lineTo(52, 40); h.curveTo(52, 22, 62, 14, 75, 14); h.curveTo(88, 14, 98, 22, 98, 40); h.lineTo(100, 86); h.closePath();
+        Shape hood = tr(at, h);
+        Shade.part(img, hood, leather, 4);
+        Path2D seam = new Path2D.Double();
+        seam.moveTo(58, 80); seam.curveTo(56, 52, 60, 28, 75, 26); seam.curveTo(90, 28, 94, 52, 92, 80);
+        stitch(img, seam, hx, hy);
         for (int side = -1; side <= 1; side += 2) {
-            double cx = 75 + side * 11;
-            Shade.part(img, tr(at, new Ellipse2D.Double(cx - 7, 38, 14, 14)), BRASS, 4);
-            Shade.part(img, tr(at, new Ellipse2D.Double(cx - 5, 40, 10, 10)), GLASS, 5);
-            eye(img, tr(at, new Ellipse2D.Double(cx - 2, 43, 5, 4)), (int) cx - 1 + hx, 43 + hy, t);
+            double cx = 75 + side * 12;
+            Shade.part(img, tr(at, new Ellipse2D.Double(cx - 7, 33, 14, 14)), Shade.ramp(new Color(150, 110, 52), 4), 1);
+            Shade.part(img, tr(at, new Ellipse2D.Double(cx - 5, 35, 10, 10)), Shade.ramp(new Color(40, 46, 30), 3), 1);
+            eye(img, tr(at, new Ellipse2D.Double(cx - 2, 38, 5, 4)), (int) cx - 1 + hx, 39 + hy, t);
+            Shade.px(img, (int) cx - 3 + hx, 36 + hy, new Color(230, 230, 200));
+            Shade.px(img, (int) cx - 2 + hx, 36 + hy, new Color(230, 230, 200));
         }
-        Path2D beak = new Path2D.Double();                             // long, curving down past the chin
-        beak.moveTo(66, 54);
-        beak.curveTo(66, 74, 72, 96, 80, 112);
-        beak.curveTo(84, 94, 86, 72, 84, 54);
-        beak.closePath();
-        Shade.part(img, tr(at, beak), Shade.ramp(new Color(130, 92, 64), 5), 7);
+        Color[] lit = Shade.ramp(new Color(150, 116, 82), 4), dark = Shade.ramp(new Color(84, 62, 46), 4);
+        Path2D cast = new Path2D.Double();                                              // the beak's shadow on the chest
+        cast.moveTo(80, 60); cast.curveTo(84, 84, 86, 104, 86, 126); cast.lineTo(80, 126); cast.curveTo(80, 100, 79, 80, 77, 62); cast.closePath();
+        Shade.part(img, tr(at, cast), Shade.ramp(new Color(18, 12, 16), 2), 0, false, 1);
+        Path2D left = new Path2D.Double();                                              // the beak: lit side, shadow side, a stitched ridge
+        left.moveTo(63, 48); left.curveTo(64, 76, 70, 102, 78, 126); left.curveTo(76, 96, 75, 72, 75, 50); left.closePath();
+        Path2D right = new Path2D.Double();
+        right.moveTo(75, 50); right.curveTo(75, 72, 76, 96, 78, 126); right.curveTo(81, 102, 86, 76, 87, 48); right.closePath();
+        Shade.part(img, tr(at, left), lit, 1);
+        Shade.part(img, tr(at, right), dark, 1);
         Path2D ridge = new Path2D.Double();
-        ridge.moveTo(75, 58);
-        ridge.curveTo(76, 80, 78, 96, 80, 110);
-        Shade.stroke(img, tr(at, ridge), 1.5f, LEATHER);
-        Shade.part(img, tr(at, new RoundRectangle2D.Double(52, -2, 46, 26, 8, 8)), FELT, 8);   // the hat
-        Shade.part(img, tr(at, new Rectangle2D.Double(52, 16, 46, 5)), RED, 2);
-        Shade.part(img, tr(at, new Ellipse2D.Double(26, 18, 98, 13)), FELT, 4);
+        ridge.moveTo(75, 52); ridge.curveTo(75, 72, 76, 96, 78, 124);
+        stitch(img, tr(at, ridge), 0, 0);
+        Shade.px(img, 70 + hx, 58 + hy, new Color(14, 8, 8));
+        Shade.px(img, 80 + hx, 58 + hy, new Color(14, 8, 8));
+        grime(img, tr(at, left), 0.06, 5);
+        grime(img, tr(at, right), 0.06, 6);
+        grime(img, hood, 0.05, 7);
+        Color[] felt = Shade.ramp(new Color(34, 30, 34), 4);
+        Shade.part(img, tr(at, new Rectangle2D.Double(55, 0, 40, 21)), felt, 2);
+        Shade.part(img, tr(at, new Rectangle2D.Double(55, 15, 40, 4)), Shade.ramp(new Color(90, 22, 26), 3), 1);
+        Shade.part(img, tr(at, new RoundRectangle2D.Double(22, 18, 106, 8, 4, 4)), felt, 1);
+        Shade.rect(img, 27 + hx, 24 + hy, 96, 1, new Color(14, 12, 14));
     }
 
+
+    /** An old goalie mask: yellowed, scuffed and cracked, rows of breathing holes, black straps. */
     private static void hockey(BufferedImage img, AffineTransform at, int hx, int hy, double t) {
-        Shade.part(img, tr(at, new Ellipse2D.Double(54, 20, 42, 58)), BONE, 16);
+        for (double y : new double[]{24, 58}) Shade.part(img, tr(at, new Rectangle2D.Double(46, y, 58, 4)), Shade.ramp(new Color(24, 22, 24), 3), 1);   // straps
+        Path2D f = new Path2D.Double();
+        f.moveTo(75, 14); f.curveTo(93, 14, 98, 32, 96, 52); f.curveTo(94, 70, 84, 82, 75, 85); f.curveTo(66, 82, 56, 70, 54, 52); f.curveTo(52, 32, 57, 14, 75, 14); f.closePath();
+        Shape face = tr(at, f);
+        Shade.part(img, face, Shade.ramp(new Color(206, 196, 166), 5), 3);
+        Area right = new Area(face);
+        right.intersect(new Area(new Rectangle(75 + hx, 0, 60, 140)));
+        Shade.part(img, right, Shade.ramp(new Color(176, 166, 138), 5), 2);             // the side turned from the lamp
+        Shade.rect(img, 75 + hx, 18 + hy, 1, 62, new Color(226, 218, 190));
         for (int side = -1; side <= 1; side += 2) {
             Path2D hole = new Path2D.Double();
             double cx = 75 + side * 10;
-            hole.moveTo(cx - 6, 42);
-            hole.quadTo(cx, 36, cx + 6, 42);
-            hole.quadTo(cx, 47, cx - 6, 42);
+            hole.moveTo(cx - 6 * side, 44); hole.lineTo(cx + 6 * side, 38); hole.lineTo(cx + 5 * side, 44); hole.closePath();
             eye(img, tr(at, hole), (int) cx - 1 + hx, 41 + hy, t);
         }
-        Color dot = new Color(40, 26, 30);
-        int[][] dots = {{75, 26}, {69, 29}, {81, 29}, {66, 54}, {72, 54}, {78, 54}, {84, 54}, {63, 60}, {69, 60}, {75, 60},
-            {81, 60}, {87, 60}, {66, 66}, {72, 66}, {78, 66}, {84, 66}, {70, 72}, {75, 72}, {80, 72}, {75, 50}};
-        for (int[] d : dots) {
-            Shade.rect(img, d[0] + hx, d[1] + hy, 2, 2, dot);
-            Shade.px(img, d[0] + 2 + hx, d[1] + 2 + hy, new Color(160, 146, 120));
+        Color dot = new Color(30, 22, 24);
+        for (int r = 0; r < 4; r++) for (int c = -2; c <= 2; c++) {
+            int x = 75 + c * 5 + (r % 2) * 2 - 1, y = 54 + r * 6;
+            if (Math.abs(c) == 2 && r == 3) continue;
+            Shade.rect(img, x + hx, y + hy, 2, 2, dot);
         }
-        Shade.rect(img, 60 + hx, 32 + hy, 4, 1, new Color(150, 136, 112));     // scuffs
-        Shade.rect(img, 85 + hx, 58 + hy, 3, 1, new Color(150, 136, 112));
+        for (int[] d : new int[][]{{70, 24}, {80, 24}, {75, 30}}) Shade.rect(img, d[0] + hx, d[1] + hy, 2, 2, dot);
+        int cx = 86, cy = 18;                                                            // a crack
+        for (int i = 0; i < 16; i++) {
+            Shade.px(img, cx + hx, cy + hy, new Color(60, 50, 44));
+            cx += hash(i, 9) % 3 - 1;
+            cy += 1;
+        }
+        grime(img, face, 0.07, 11);
     }
+
 
     private static void sack(BufferedImage img, AffineTransform at, int hx, int hy, double t) {
         Path2D bag = new Path2D.Double();
@@ -344,16 +441,25 @@ public final class PixelArt {
     }
 
     private static void welding(BufferedImage img, AffineTransform at, int hx, int hy, double t) {
-        Shade.part(img, tr(at, new RoundRectangle2D.Double(52, 14, 46, 66, 18, 18)), STEEL_DARK, 14);
-        Shade.part(img, tr(at, new RoundRectangle2D.Double(58, 34, 34, 14, 3, 3)), Shade.ramp(new Color(24, 22, 26), 3), 2);
-        Shade.part(img, tr(at, new Rectangle2D.Double(61, 37, 28, 8)), Shade.ramp(new Color(48, 110, 72), 4), 3);
+        Shade.part(img, tr(at, new Rectangle2D.Double(50, 18, 50, 4)), Shade.ramp(new Color(24, 22, 24), 3), 1);   // the head band
+        Shape shell = tr(at, new RoundRectangle2D.Double(52, 14, 46, 66, 10, 10));
+        Shade.part(img, shell, STEEL_DARK, 4);
+        Shade.part(img, tr(at, new Polygon(new int[]{75, 98, 98, 75}, new int[]{14, 14, 80, 80}, 4)), Shade.ramp(new Color(46, 44, 48), 5), 2);
+        Shade.part(img, tr(at, new RoundRectangle2D.Double(58, 34, 34, 14, 3, 3)), Shade.ramp(new Color(24, 22, 26), 3), 1);
+        Shade.part(img, tr(at, new Rectangle2D.Double(61, 37, 28, 8)), Shade.ramp(new Color(40, 96, 62), 4), 1);
         if (Math.sin(t * 1.7) > -0.3) Shade.rect(img, 63 + hx, 38 + hy, 6, 1, new Color(170, 240, 190));
         for (int[] r : new int[][]{{57, 20}, {93, 20}, {57, 72}, {93, 72}}) {
             Shade.rect(img, r[0] + hx, r[1] + hy, 2, 2, METAL[3]);
             Shade.px(img, r[0] + hx, r[1] + hy, METAL[4]);
         }
-        Shade.rect(img, 54 + hx, 50 + hy, 42, 1, STEEL_DARK[0]);       // the seam of the shield
+        Shade.rect(img, 54 + hx, 50 + hy, 42, 1, STEEL_DARK[0]);
+        for (int i = 0; i < 5; i++) {                                                    // scratches and burn marks
+            int x = 56 + hash(i, 1) % 36, y = 54 + hash(i, 2) % 22;
+            Shade.rect(img, x + hx, y + hy, 3 + hash(i, 3) % 5, 1, new Color(100, 96, 100));
+        }
+        grime(img, shell, 0.08, 13);
     }
+
 
     private static void bauta(BufferedImage img, AffineTransform at, int hx, int hy, double t) {
         Path2D m = new Path2D.Double();                                 // a blank brow over a jutting, square jaw
@@ -365,7 +471,8 @@ public final class PixelArt {
         m.lineTo(56, 54);
         m.curveTo(55, 46, 54, 34, 60, 22);
         m.closePath();
-        Shade.part(img, tr(at, m), BONE, 12);
+        Shade.part(img, tr(at, m), BONE, 4);
+        grime(img, tr(at, m), 0.06, 19);
         Shade.rect(img, 57 + hx, 62 + hy, 36, 1, new Color(150, 132, 116));    // the jutting chin's crease
         Path2D nose = new Path2D.Double();
         nose.moveTo(75, 38);
@@ -385,7 +492,7 @@ public final class PixelArt {
     private static void fencing(BufferedImage img, AffineTransform at, int hx, int hy, double t) {
         Shade.part(img, tr(at, new RoundRectangle2D.Double(54, 70, 42, 20, 6, 6)), CLOTH, 6);   // the bib
         Shape dome = tr(at, new Ellipse2D.Double(53, 16, 44, 60));
-        Shade.part(img, dome, STEEL_DARK, 18);
+        Shade.part(img, dome, STEEL_DARK, 6);
         Rectangle r = dome.getBounds();
         for (int y = r.y; y < r.y + r.height; y++) {                    // the steel mesh catches the light
             for (int x = r.x; x < r.x + r.width; x++) {
@@ -403,7 +510,7 @@ public final class PixelArt {
 
     private static void balaclava(BufferedImage img, AffineTransform at, int hx, int hy, double t) {
         Shape head = tr(at, new Ellipse2D.Double(52, 16, 46, 62));
-        Shade.part(img, head, WOOL, 16);
+        Shade.part(img, head, WOOL, 6);
         Rectangle r = head.getBounds();
         for (int y = r.y; y < r.y + r.height; y++) {                    // knitted ribs
             for (int x = r.x; x < r.x + r.width; x += 3) {
@@ -423,7 +530,8 @@ public final class PixelArt {
     /** A t-shirt wound round the head and knotted, with swimming goggles over it. */
     private static void rag(BufferedImage img, AffineTransform at, int hx, int hy, double t) {
         Color[] rag = Shade.ramp(new Color(116, 54, 48), 5);
-        Shade.part(img, tr(at, new Ellipse2D.Double(51, 16, 48, 64)), rag, 14);
+        Shade.part(img, tr(at, new Ellipse2D.Double(51, 16, 48, 64)), rag, 6);
+        grime(img, tr(at, new Ellipse2D.Double(51, 16, 48, 64)), 0.08, 23);
         for (int i = 0; i < 4; i++) {                                     // the turns of cloth
             Path2D fold = new Path2D.Double();
             fold.moveTo(52, 24 + i * 15);
@@ -473,7 +581,8 @@ public final class PixelArt {
         Shade.part(img, tr(at, new Polygon(new int[]{98, 108, 108, 98}, new int[]{14, 8, 74, 80}, 4)), side, 2);
         Shade.part(img, tr(at, new Polygon(new int[]{48, 98, 90, 40}, new int[]{14, 14, 2, 6}, 4)), side, 2);
         Shade.part(img, tr(at, new Polygon(new int[]{98, 108, 118, 106}, new int[]{14, 8, 0, 4}, 4)), card, 2);
-        Shade.part(img, tr(at, new Rectangle2D.Double(48, 14, 50, 66)), card, 3);
+        Shade.part(img, tr(at, new Rectangle2D.Double(48, 14, 50, 66)), card, 2);
+        grime(img, tr(at, new Rectangle2D.Double(48, 14, 50, 66)), 0.06, 31);
         Shade.part(img, tr(at, new Rectangle2D.Double(48, 21, 50, 6)), Shade.ramp(new Color(196, 176, 124), 3), 1);   // packing tape
         Path2D l = new Path2D.Double();
         l.moveTo(57, 40); l.lineTo(68, 38); l.lineTo(70, 46); l.lineTo(58, 47); l.closePath();
@@ -497,7 +606,8 @@ public final class PixelArt {
         Color[] paper = Shade.ramp(new Color(198, 166, 118), 5);
         Path2D b = new Path2D.Double();
         b.moveTo(50, 80); b.lineTo(47, 40); b.lineTo(49, 12); b.lineTo(101, 12); b.lineTo(103, 44); b.lineTo(100, 80); b.closePath();
-        Shade.part(img, tr(at, b), paper, 5);
+        Shade.part(img, tr(at, b), paper, 3);
+        grime(img, tr(at, b), 0.06, 37);
         for (int x : new int[]{56, 94}) {                                   // the folded sides
             Path2D crease = new Path2D.Double();
             crease.moveTo(x, 14);
@@ -522,7 +632,8 @@ public final class PixelArt {
     /** A pillowcase tied at the neck with string, a face drawn on it in marker. */
     private static void pillow(BufferedImage img, AffineTransform at, int hx, int hy, double t) {
         Color[] cloth = Shade.ramp(new Color(204, 198, 184), 5);
-        Shade.part(img, tr(at, new RoundRectangle2D.Double(48, 10, 54, 72, 22, 22)), cloth, 12);
+        Shade.part(img, tr(at, new RoundRectangle2D.Double(48, 10, 54, 72, 14, 14)), cloth, 5);
+        grime(img, tr(at, new RoundRectangle2D.Double(48, 10, 54, 72, 14, 14)), 0.07, 29);
         Shade.part(img, tr(at, new Ellipse2D.Double(56, 62, 18, 12)), Shade.ramp(new Color(186, 170, 120), 3), 4);   // an old stain
         for (int side = -1; side <= 1; side += 2) {
             int cx = 75 + side * 12;
@@ -554,41 +665,45 @@ public final class PixelArt {
     }
 
     /** A guard's mask: white, with a fixed wide smile, a curled moustache and a thin beard. */
+    /** A guard's mask: hard white, a fixed thin smile, a curled moustache, a narrow beard; cracked and dirty. */
     private static void smile(BufferedImage img, AffineTransform at, int hx, int hy, double t) {
         Path2D f = new Path2D.Double();
-        f.moveTo(75, 16);
-        f.curveTo(97, 16, 101, 40, 97, 56);
-        f.curveTo(93, 72, 83, 82, 75, 84);
-        f.curveTo(67, 82, 57, 72, 53, 56);
-        f.curveTo(49, 40, 53, 16, 75, 16);
-        f.closePath();
-        Shade.part(img, tr(at, f), Shade.ramp(new Color(234, 226, 212), 5), 12);
-        Color[] rose = Shade.ramp(new Color(214, 140, 134), 3);
-        Shade.part(img, tr(at, new Ellipse2D.Double(56, 50, 11, 8)), rose, 3);
-        Shade.part(img, tr(at, new Ellipse2D.Double(83, 50, 11, 8)), rose, 3);
+        f.moveTo(75, 15); f.curveTo(95, 15, 100, 38, 97, 55); f.curveTo(94, 70, 83, 82, 75, 86); f.curveTo(67, 82, 56, 70, 53, 55); f.curveTo(50, 38, 55, 15, 75, 15); f.closePath();
+        Shape face = tr(at, f);
+        Shade.part(img, face, Shade.ramp(new Color(220, 212, 198), 5), 3);
+        Area right = new Area(face);
+        right.intersect(new Area(new Rectangle(78 + hx, 0, 60, 140)));
+        Shade.part(img, right, Shade.ramp(new Color(190, 182, 170), 5), 2);
         for (int side = -1; side <= 1; side += 2) {
+            Shade.part(img, tr(at, new Ellipse2D.Double(75 + side * 13 - 3, 52, 6, 3)), Shade.ramp(new Color(190, 136, 130), 2), 0, false, 1);   // faint cheeks
             Path2D brow = new Path2D.Double();
-            brow.moveTo(75 + side * 4, 34);
-            brow.quadTo(75 + side * 10, 29, 75 + side * 18, 35);
-            Shade.stroke(img, tr(at, brow), 1.3f, Shade.ramp(INK, 2));
+            brow.moveTo(75 + side * 3, 35);
+            brow.quadTo(75 + side * 10, 29, 75 + side * 18, 34);
+            Shade.stroke(img, tr(at, brow), 1.1f, Shade.ramp(INK, 2));
             double cx = 75 + side * 11;
             Path2D e = new Path2D.Double();
-            e.moveTo(cx - 6, 42);
-            e.quadTo(cx, 38, cx + 6, 42);
-            e.quadTo(cx, 44, cx - 6, 42);
+            e.moveTo(cx - 6, 42); e.quadTo(cx, 39, cx + 6, 42); e.quadTo(cx, 43.5, cx - 6, 42);
             eye(img, tr(at, e), (int) cx - 1 + hx, 41 + hy, t);
-            Path2D tash = new Path2D.Double();                              // the moustache, curling up
+            Path2D tash = new Path2D.Double();
             tash.moveTo(75, 60);
             tash.quadTo(75 + side * 8, 58, 75 + side * 13, 60);
-            tash.quadTo(75 + side * 17, 58, 75 + side * 17, 53);
-            Shade.stroke(img, tr(at, tash), 2, Shade.ramp(INK, 2));
+            tash.quadTo(75 + side * 17, 59, 75 + side * 16, 52);
+            Shade.stroke(img, tr(at, tash), 1.4f, Shade.ramp(INK, 2));
         }
         Path2D grin = new Path2D.Double();
-        grin.moveTo(63, 64);
-        grin.quadTo(75, 72, 87, 64);
-        Shade.stroke(img, tr(at, grin), 1.2f, Shade.ramp(new Color(120, 70, 70), 2));
-        Shade.part(img, tr(at, new Rectangle2D.Double(73.5, 70, 3, 11)), Shade.ramp(INK, 2), 1);   // the thin beard
+        grin.moveTo(64, 65);
+        grin.quadTo(75, 71, 86, 65);
+        Shade.stroke(img, tr(at, grin), 1f, Shade.ramp(new Color(70, 40, 40), 2));
+        Shade.part(img, tr(at, new Rectangle2D.Double(74, 72, 2, 11)), Shade.ramp(INK, 2), 0, false, 1);
+        int cx = 66, cy = 16;                                                            // a crack down from the brow
+        for (int i = 0; i < 22; i++) {
+            Shade.px(img, cx + hx, cy + hy, new Color(70, 60, 56));
+            cx += hash(i, 4) % 3 - 1;
+            cy += 1;
+        }
+        grime(img, face, 0.06, 17);
     }
+
 
     // ─── Pieces ─────────────────────────────────────────────────
     private static final java.util.Map<String, BufferedImage> PIECES = new java.util.HashMap<>();

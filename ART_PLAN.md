@@ -92,6 +92,21 @@ neon, flying traffic) and asked for:
 
 ## Status
 (newest first)
+- 2026-11-13 (feedback 1): the user said the washing sounds were bad, the masks too round and comical
+  (the plague doctor most), and asked for a more disgusting skywalk. They declined downloading real
+  recordings (CC BY sounds from actions.google.com/sounds were offered), so the bathroom is now
+  synthesized sounds that synthesize well: a fluorescent hum that crackles exactly when the tube flickers
+  on screen (`Music.hash` = `Opening.hash`), drips, and a hand dryer spinning up, roaring with hands
+  moving in it, and spinning down. Masks redrawn flatter and dirtier (`grime`, `stitch` in PixelArt;
+  rounding cut on hoods, robes, sleeves): plague doctor = dark stitched leather hood, long pale two-plane
+  beak with a stitched ridge and a cast shadow, brass-rimmed glass eyes, flat hat; gas mask = rounded
+  wrinkled rubber hood, ringed eyepieces, screw-on filter, ribbed hose; hockey = yellowed with straps and a
+  crack; the white smile = flatter, faint cheeks, cracked and dirty; welding scratched; hands with
+  knuckles. Skywalk: litter on every stretch, rubbish heaps with flies, graffiti (NO WAY OUT, WHO WINS?,
+  THEY WATCH...), eleven beggars (cups that reach out as he passes, signs, one lying under a blanket, a
+  mother and child), two fires in drums with people around them and smoke, rats, a propaganda screen
+  (WORK. OBEY. PLAY. / THE HOUSE ALWAYS WINS), drizzle, more people walking, a foreground layer (rubbish
+  mounds, a torn fence, leaking pipes, a sleeper on a ledge). Not yet seen moving by the user.
 - 2026-11-13 (opening): **the new direction is in, waiting for the user's verdict.** `Opening.java`
   (bathroom tiles, city in parallax layers built once: sky shaft, three tower layers with floors of lit
   windows, neon glyph signs, credit signs, traffic, a barge, god rays, dust, the street and crowd below;

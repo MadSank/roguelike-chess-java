@@ -13,7 +13,8 @@ import java.util.Random;
  *   beats   0-16   a bathroom: only the tiles, under a flickering tube; you hear the tap, the hands, the door.
  *   beats  16-100  outside: a guard in a long coat walks out of the washroom booth and across a skywalk
  *                  through an overcrowded, rotting megacity (towers in haze, a shaft of light from above,
- *                  traffic, neon, people sleeping against the rail, a crowd far below). The credits are
+ *                  traffic, neon, beggars, rubbish heaps, fires in drums, rats, graffiti, a propaganda
+ *                  screen, drizzle, a crowd far below). The credits are
  *                  neon signs on the buildings. At the far door he puts on his white smiling mask.
  *   beats 100-108  the game room: two prisoners at a chess table, masked guards around them in the dark;
  *                  he comes in and takes his place.
@@ -294,6 +295,18 @@ public final class Opening {
         Px.rect(g, ax - 6, 52, Px.textWidth("ASHES", 4) + 12, 46, new Color(16, 12, 12));
         neonText(g, "ASHES", ax, 58, new Color(255, 140, 60), 4, ashes);
         neonText(g, "OF THE BOARD", ax + 30, 90, new Color(240, 200, 150), 1, ashes);
+        int px = (int) (760 - cam * F_NEAR);                                            // a screen telling everyone what to do
+        if (px > -90 && px < W) {
+            Px.rect(g, px - 3, 26, 86, 50, new Color(10, 10, 12));
+            String[] words = {"WORK.", "OBEY.", "PLAY.", "THE HOUSE", "ALWAYS WINS"};
+            int k = (int) (t / 1.6) % 4;
+            boolean glitch = hash((int) (t * 10), 21) % 9 == 0;
+            Color c = glitch ? new Color(90, 230, 220) : new Color(230, 70, 60);
+            if (k < 3) Px.centred(g, words[k], px + 40, 40, c, 2);
+            else { Px.centred(g, words[3], px + 40, 36, c, 1); Px.centred(g, words[4], px + 40, 50, c, 1); }
+            for (int y = 28; y < 74; y += 2) Px.rect(g, px - 1, y, 82, 1, new Color(0, 0, 0, 90));
+            if (glitch) Px.rect(g, px - 1, 30 + hash((int) (t * 10), 3) % 40, 82, 3, new Color(200, 255, 250, 120));
+        }
         g.drawImage(rays, 0, 0, null);
         for (int i = 0; i < 40; i++) {                                                 // dust drifting in the shaft of light
             int x = Math.floorMod((int) (hash(i, 1) % W + t * 3 - cam * 0.3), W), y = (int) ((hash(i, 2) % 300 + t * (5 + i % 5)) % 300);
@@ -308,6 +321,12 @@ public final class Opening {
             Px.rect(g, x, y - 2 + bob, 2, 2, new Color(14, 12, 12));
         }
         skywalk(g, b, t, cam);
+        foreground(g, b, t, cam);
+        for (int i = 0; i < 90; i++) {                                                 // a filthy drizzle
+            int x = Math.floorMod((int) (hash(i, 31) % (W + 60) - t * 40 - (i % 3) * 9), W + 60) - 30;
+            int y = (int) ((hash(i, 32) % H + t * (180 + i % 5 * 30)) % H);
+            for (int k = 0; k < 5; k++) Px.dot(g, x - k / 2, y + k, new Color(170, 176, 160, 50));
+        }
     }
 
     /** Flying traffic in lanes at some depth range: dark shapes with a red tail light and a white head light. */
@@ -340,6 +359,191 @@ public final class Opening {
 
     private static BufferedImage sprite(String key, java.util.function.Supplier<BufferedImage> make) {
         return SPRITES.computeIfAbsent(key, k -> make.get());
+    }
+
+    /** Beggar poses: 0 sitting with a cup held out, 1 lying under a blanket, 2 sitting with a sign, 3 a mother and child. */
+    private static final int[][] BEGGARS = {{300, 0}, {420, 2}, {760, 1}, {980, 0}, {1110, 3}, {1420, 2}, {1600, 0}, {1840, 1}, {2060, 2}, {2250, 0}, {2370, 1}};
+    private static final String[] SIGNS_TEXT = {"HUNGRY", "ANYTHING", "NO HOME", "HELP"};
+    private static final int[] FIRES = {560, 1700};
+    private static final int[] HEAPS = {200, 470, 690, 1030, 1180, 1350, 1560, 1780, 1990, 2190, 2330};
+
+    private static BufferedImage beggar(int kind, int seed, boolean reaching) {
+        return sprite("beg" + kind + "," + seed + "," + reaching, () -> {
+            BufferedImage img = new BufferedImage(40, 34, BufferedImage.TYPE_INT_ARGB);
+            Color[] rag = Shade.ramp(new Color(58 + seed % 3 * 8, 50 + seed % 2 * 6, 44), 4), dark = Shade.ramp(new Color(36, 32, 32), 3);
+            Color[] skin = Shade.ramp(new Color(150, 116, 96), 3);
+            if (kind == 1) {                                                          // lying down, a blanket over everything
+                Shade.part(img, new RoundRectangle2D.Double(2, 22, 36, 11, 8, 8), rag, 3);
+                Shade.part(img, new Ellipse2D.Double(30, 20, 9, 8), dark, 2);
+                for (int x = 4; x < 34; x += 5) Shade.rect(img, x, 24 + x % 3, 3, 1, rag[0]);
+                return img;
+            }
+            Shade.part(img, new Ellipse2D.Double(6, 14, 24, 20), rag, 4);             // sitting hunched, knees up
+            Shade.part(img, new Ellipse2D.Double(11, 3, 12, 13), dark, 3);            // hooded head, bowed
+            Shade.part(img, new Ellipse2D.Double(18, 7, 4, 5), Shade.ramp(new Color(14, 10, 12), 2), 0, false, 1);
+            if (kind == 0) {                                                          // an arm out, a tin cup
+                int reach = reaching ? 9 : 4;
+                Shade.stroke(img, new Line2D.Double(20, 20, 24 + reach, 22), 3, rag);
+                Shade.part(img, new Ellipse2D.Double(23 + reach, 20, 4, 4), skin, 1);
+                Shade.part(img, new Rectangle2D.Double(26 + reach, 18, 4, 5), Shade.ramp(new Color(120, 120, 126), 3), 1);
+            } else if (kind == 2) {                                                   // a cardboard sign
+                Shade.part(img, new Rectangle2D.Double(14, 18, 24, 12), Shade.ramp(new Color(168, 136, 92), 3), 1);
+            } else {                                                                  // a child against her
+                Shade.part(img, new Ellipse2D.Double(26, 20, 10, 13), Shade.ramp(new Color(70, 56, 60), 3), 3);
+                Shade.part(img, new Ellipse2D.Double(27, 13, 8, 8), dark, 2);
+            }
+            return img;
+        });
+    }
+
+    /** Close to the camera, below and in front of the rail: rubbish mounds, a fence, pipes, someone asleep. */
+    private static void foreground(Graphics2D g, double b, double t, int cam) {
+        double f = 1.35;
+        int off = (int) (cam * f);
+        for (int i = 0; i < 16; i++) {
+            int wx = i * 230 + hash(i, 40) % 90, x = wx - off;
+            if (x < -200 || x > W + 40) continue;
+            switch (i % 4) {
+                case 0: {                                                                 // a mound of rubbish
+                    for (int k = 0; k < 9; k++) {
+                        int bw = 26 + hash(i, k) % 20, bh = 18 + hash(k, i) % 14;
+                        g.setColor(k % 3 == 0 ? new Color(16, 16, 20) : k % 3 == 1 ? new Color(24, 26, 22) : new Color(32, 24, 20));
+                        g.fillRoundRect(x + k * 16 - 30, 300 + (k % 3) * 8, bw, bh, 9, 9);
+                        Px.rect(g, x + k * 16 - 26, 302 + (k % 3) * 8, 6, 1, new Color(70, 70, 84));
+                    }
+                    Px.rect(g, x + 20, 296, 4, 10, new Color(150, 40, 40));               // a crushed can on top
+                    break;
+                }
+                case 1: {                                                                 // chain-link fence, torn
+                    for (int y = 296; y < H; y++) for (int k = 0; k < 120; k++) {
+                        if (((k + y) % 6 == 0 || (k - y + 600) % 6 == 0) && !(k > 70 && k < 90 && y > 320)) Px.dot(g, x + k, y, new Color(40, 42, 40));
+                    }
+                    Px.rect(g, x, 294, 120, 2, new Color(56, 56, 52));
+                    Px.rect(g, x, 294, 3, H - 294, new Color(30, 30, 30));
+                    Px.rect(g, x + 117, 294, 3, H - 294, new Color(30, 30, 30));
+                    break;
+                }
+                case 2: {                                                                 // pipes, leaking
+                    Px.rect(g, x - 40, 318, 200, 7, new Color(34, 30, 28));
+                    Px.rect(g, x - 40, 318, 200, 1, new Color(86, 70, 56));
+                    Px.rect(g, x - 40, 330, 200, 5, new Color(26, 24, 24));
+                    for (int k = 0; k < 3; k++) {
+                        int dy = (int) ((t * 60 + k * 17) % 40);
+                        Px.dot(g, x + 30 + k * 50, 326 + dy, new Color(120, 140, 130));
+                    }
+                    break;
+                }
+                default: {                                                                // someone asleep on a ledge, close by
+                    Px.rect(g, x - 20, 326, 110, 6, new Color(30, 28, 26));
+                    g.setColor(new Color(44, 38, 36));
+                    g.fillRoundRect(x, 304, 70, 22, 14, 14);
+                    g.setColor(new Color(30, 26, 28));
+                    g.fillOval(x + 58, 300, 18, 16);
+                    Px.rect(g, x + 8, 310, 50, 1, new Color(60, 52, 48));
+                    break;
+                }
+            }
+        }
+    }
+
+    /** Everything that makes the skywalk a place nobody should live. */
+    private static void filth(Graphics2D g, double b, double t, int cam) {
+        // graffiti on the glass of the back rail and on the booth
+        String[] tags = {"NO WAY OUT", "WHO WINS?", "THEY WATCH", "ROT", "FREE US", "PLAY OR PAY"};
+        Color[] spray = {new Color(200, 60, 90), new Color(90, 200, 120), new Color(230, 200, 70), new Color(120, 140, 230), new Color(220, 120, 50)};
+        for (int i = 0; i < 18; i++) {
+            int wx = 140 + i * 131 + hash(i, 1) % 40, x = wx - cam;
+            if (x < -80 || x > W) continue;
+            Color c = Shade.mix(spray[i % spray.length], new Color(40, 36, 30), 0.35);
+            if (i % 3 == 0) Px.text(g, tags[i / 3 % tags.length], x, 250 + hash(i, 2) % 4, c, i % 2 == 0 ? 2 : 1);
+            else for (int k = 0; k < 26; k++) Px.dot(g, x + k, 256 + (int) (Math.sin(k * 0.7 + i) * 4), c);   // scrawls
+        }
+        // litter on every stretch of floor
+        Color[] junk = {new Color(150, 40, 40), new Color(200, 196, 180), new Color(60, 120, 70), new Color(120, 120, 126), new Color(210, 170, 60), new Color(90, 70, 50)};
+        for (int x = 0; x < W; x++) {
+            int wx = x + cam;
+            int h = hash(wx, 77);
+            if (h % 5 != 0) continue;
+            int y = 274 + h / 7 % 13;
+            Color c = junk[h / 97 % junk.length];
+            switch (h / 13 % 4) {
+                case 0: Px.rect(g, x, y, 2, 1, c); break;                                          // wrappers
+                case 1: Px.rect(g, x, y - 2, 2, 3, c); Px.dot(g, x, y - 2, Color.WHITE); break;    // cans
+                case 2: Px.rect(g, x, y, 3, 2, Shade.mix(c, new Color(200, 196, 180), 0.6)); break; // paper
+                default: Px.dot(g, x, y, new Color(20, 18, 16)); break;                            // stains
+            }
+        }
+        // heaps of rubbish bags, flies over them
+        for (int i = 0; i < HEAPS.length; i++) {
+            int x = HEAPS[i] - cam;
+            if (x < -40 || x > W) continue;
+            for (int k = 0; k < 6 + i % 3; k++) {
+                int bw = 14 + hash(i, k) % 9, bh = 11 + hash(k, i) % 8, bx = x + k * 9 - (k % 2) * 4, by = 275 - bh - (k % 3) * 5;
+                g.setColor(k % 3 == 0 ? new Color(18, 18, 22) : k % 3 == 1 ? new Color(30, 34, 30) : new Color(40, 30, 26));
+                g.fillRoundRect(bx, by, bw, bh, 5, 5);
+                Px.dot(g, bx + 2, by + 2, new Color(90, 96, 104));
+            }
+            Px.rect(g, x - 4, 271, 10, 2, new Color(60, 44, 30));                               // something spilled
+            for (int f = 0; f < 5; f++) {
+                double a = t * (5 + f) + f * 1.7;
+                Px.dot(g, x + 14 + (int) (Math.cos(a) * (6 + f)), 254 + (int) (Math.sin(a * 1.3) * 5), new Color(12, 12, 12));
+            }
+        }
+        // fires in oil drums, people standing round them
+        for (int fx : FIRES) {
+            int x = fx - cam;
+            if (x < -60 || x > W + 60) continue;
+            g.setColor(new Color(255, 140, 50, 26 + (int) (10 * Math.sin(t * 13))));
+            g.fillOval(x - 46, 196, 106, 90);
+            for (int k = 0; k < 3; k++) {                                                        // people warming their hands
+                BufferedImage w = shadowed(-1, k + 1);
+                int px = x - 26 + k * 24 + (k == 1 ? 6 : 0);
+                if (k == 1) g.drawImage(w, px, FLOOR - 6 - 88, null);
+                else g.drawImage(w, k == 0 ? px : px + w.getWidth(), FLOOR - 6 - 88, k == 0 ? w.getWidth() : -w.getWidth(), w.getHeight(), null);
+            }
+            Px.rect(g, x, 254, 15, 20, new Color(86, 44, 30));
+            Px.rect(g, x, 258, 15, 1, new Color(50, 26, 20));
+            Px.rect(g, x, 266, 15, 1, new Color(50, 26, 20));
+            Px.rect(g, x + 1, 254, 2, 20, new Color(130, 70, 40));
+            for (int k = 0; k < 14; k++) {                                                       // the flames
+                int fh = 4 + hash(k, (int) (t * 14)) % 9;
+                Px.rect(g, x + 1 + k, 254 - fh, 1, fh, k % 3 == 0 ? new Color(255, 230, 140) : new Color(250, 130, 40));
+            }
+            for (int k = 0; k < 10; k++) {                                                       // smoke going up
+                double age = (t * 0.6 + k * 0.1) % 1;
+                int sx = x + 6 + (int) (Math.sin(t + k) * 4 + age * 10), sy = 240 - (int) (age * 90);
+                g.setColor(new Color(70, 66, 58, (int) (90 * (1 - age))));
+                g.fillOval(sx - 3 - (int) (age * 6), sy, 6 + (int) (age * 12), 5 + (int) (age * 8));
+            }
+        }
+        // beggars against the rail; the ones with cups reach out as he passes
+        double wxNow = walkerX(b);
+        for (int i = 0; i < BEGGARS.length; i++) {
+            int x = BEGGARS[i][0] - cam, kind = BEGGARS[i][1];
+            if (x < -50 || x > W) continue;
+            boolean reaching = kind == 0 && Math.abs(wxNow - BEGGARS[i][0]) < 60 && b > 16.5 && b < 96;
+            g.drawImage(beggar(kind, i, reaching), x, 242, null);
+            if (kind == 2) Px.text(g, SIGNS_TEXT[i % SIGNS_TEXT.length].substring(0, Math.min(3, SIGNS_TEXT[i % SIGNS_TEXT.length].length())), x + 16, 263, new Color(30, 22, 18), 1);
+        }
+        // rats
+        for (int i = 0; i < 4; i++) {
+            double run = (t * 70 + i * 400) % 900;
+            int x = (int) (i % 2 == 0 ? run : 900 - run) - 200 + (i * 37) % 120, y = 286 - i % 2 * 3;
+            if (x < -10 || x > W) continue;
+            boolean right = i % 2 == 0;
+            Px.rect(g, x, y, 6, 3, new Color(30, 26, 24));
+            Px.rect(g, right ? x + 5 : x - 1, y, 2, 2, new Color(36, 30, 28));
+            Px.rect(g, right ? x - 4 : x + 6, y + 2, 4, 1, new Color(70, 50, 50));
+        }
+        // a broken machine and a puddle
+        int vx = 640 - cam;
+        if (vx > -40 && vx < W) {
+            Px.rect(g, vx, 218, 26, 54, new Color(30, 34, 36));
+            Px.rect(g, vx + 4, 224, 18, 10, new Color(20, 40, 30));
+            if (hash((int) (t * 9), 2) % 4 != 0) for (int k = 0; k < 4; k++) Px.rect(g, vx + 4 + hash(k, (int) (t * 9)) % 10, 225 + k * 2, 6, 1, new Color(90, 240, 150));
+            Px.rect(g, vx + 4, 240, 18, 20, new Color(40, 44, 46));
+            for (int k = 0; k < 8; k++) Px.dot(g, vx + 6 + hash(k, 5) % 14, 242 + hash(k, 6) % 16, new Color(110, 116, 120));   // smashed glass
+        }
     }
 
     private static BufferedImage huddled(int seed) {
@@ -392,18 +596,8 @@ public final class Opening {
             Px.rect(g, bx + 53 + (int) (24 * open), 191, Math.max(3, (int) (24 * (1 - open))), 81, new Color(64, 70, 72));   // the door panel
             neonText(g, "WC", bx + 59, 176, new Color(110, 240, 150), 1, hash((int) (t * 4), 3) % 9 != 0);
         }
-        // people sleeping against the rail, a broken machine, rubbish, a puddle, a drone
-        int[] huddles = {340, 870, 1520, 2020};
-        for (int i = 0; i < huddles.length; i++) g.drawImage(huddled(i), huddles[i] - cam, 250, null);
-        int vx = 640 - cam;
-        if (vx > -40 && vx < W) {
-            Px.rect(g, vx, 218, 26, 54, new Color(30, 34, 36));
-            Px.rect(g, vx + 4, 224, 18, 10, new Color(20, 40, 30));
-            if (hash((int) (t * 9), 2) % 4 != 0) for (int k = 0; k < 4; k++) Px.rect(g, vx + 4 + hash(k, (int) (t * 9)) % 10, 225 + k * 2, 6, 1, new Color(90, 240, 150));
-            Px.rect(g, vx + 4, 240, 18, 20, new Color(40, 44, 46));
-            g.setColor(new Color(90, 240, 150, 25));
-            g.fillRect(vx - 6, 272, 38, 10);
-        }
+        // filth: litter everywhere, rubbish heaps with flies, graffiti, beggars, a fire in a barrel, rats
+        filth(g, b, t, cam);
         for (int k = 0; k < 3; k++) {
             int x = 1150 + k * 11 - cam;
             Px.rect(g, x, 260 - k % 2 * 3, 12, 12 + k % 2 * 3, new Color(20, 20, 24));
@@ -480,7 +674,7 @@ public final class Opening {
         }
     }
 
-    private static final double[] PASSERS = {24, 33, 41, 52, 60, 71, 83, 90};
+    private static final double[] PASSERS = {21, 26, 31, 35, 40, 44, 50, 55, 59, 64, 69, 74, 79, 84, 88, 92};
 
     // ─── The guard, walking ─────────────────────────────────────
     /** One frame of him walking (frame 0-11 of a two-step stride, or -1 standing); stage 0-3 is his mask going on. */
@@ -490,7 +684,7 @@ public final class Opening {
 
     private static BufferedImage shadowed(int frame, int who) {
         return sprite("pass" + frame + "," + who % 3, () -> {
-            BufferedImage src = buildWalker(frame / 12.0, true, -1, true);
+            BufferedImage src = buildWalker(Math.max(0, frame) / 12.0, frame >= 0, -1, true);
             BufferedImage d = new BufferedImage(src.getWidth(), src.getHeight(), BufferedImage.TYPE_INT_ARGB);
             Color tint = who % 3 == 0 ? new Color(16, 12, 20) : who % 3 == 1 ? new Color(22, 18, 16) : new Color(12, 16, 18);
             for (int y = 0; y < src.getHeight(); y++) {
