@@ -23,7 +23,7 @@ public final class Music {
     public static final int RATE = 44100;
 
     // ════════ Composition ════════════════════════════════════════
-    enum Inst { ORGAN, BASS, BOX, LEAD, REED, BELL, STRING, HEART, TICK, TOCK, BOOM, STAB, FIZZ, KICK, JINGLE, CITY, SAMPLE }
+    enum Inst { ORGAN, BASS, BOX, LEAD, REED, BELL, STRING, HEART, TICK, TOCK, BOOM, STAB, FIZZ, KICK, JINGLE, CITY, RAIN, SAMPLE }
 
     private static final class Note {
         final Inst inst;
@@ -122,22 +122,26 @@ public final class Music {
 
     static {
         // ── The opening: a bathroom, the skywalk, the game room. His footsteps become the beat ──
-        //  0-16 bathroom (a buzzing tube, drips, a hand dryer, the latch, the door) / 16-96 the walk, one step a beat:
+        //  0-16 a smoke break in the rain (lighter, drags, exhales, the butt dropped and ground out) / 16-96 the walk, one step a beat:
         //  steps alone, then a kick under them (32), the table's bass and his keys (48), organ and
         //  music box (64), the melody (80) / 96 he stops at the door / 100-116 the room, heartbeat.
         Song op = new Song("opening", OPENING_BPM, OPENING_BEATS, false, 0, 0.12);
         op.normFrom = 80;
         op.normTo = 96;
         List<Note> ol = op.layer(0);
-        ol.add(new Note("hum", 0, 1.0));                                   // the tube, crackling when it flickers on screen
-        ol.add(new Note("drip", 0.6, 1.4));
-        ol.add(new Note("dryer", 1.5, 1.6));                               // hands under a roaring dryer
-        ol.add(new Note("drip", 11, 1.6));
-        ol.add(new Note("drip", 12.2, 1.2));
-        ol.add(new Note("drip", 13.4, 1.4));
-        ol.add(new Note("latch", 14.3, 0.9));
-        ol.add(new Note("door", 15, 0.9));
-        ol.add(new Note(Inst.CITY, 15, 89, 1.0, 0));
+        ol.add(new Note(Inst.RAIN, 0, 16, 1.7, 0));                         // a smoke break in the rain
+        ol.add(new Note("flick", 2.0, 1.7));                               // the lighter fails...
+        ol.add(new Note("flick", 3.0, 1.7));                               // ...and catches
+        ol.add(new Note("catch", 3.15, 1.7));
+        ol.add(new Note("clack", 5.0, 1.7));                               // the lid snaps shut
+        ol.add(new Note("drag", 6.0, 1.7));
+        ol.add(new Note("exhale", 7.2, 1.7));
+        ol.add(new Note("drag", 9.0, 1.7));
+        ol.add(new Note("exhale", 10.2, 1.7));
+        ol.add(new Note("sizzle", 12.8, 1.7));                             // dropped in a puddle
+        ol.add(new Note("grind", 13.6, 1.7));                              // ground out under a boot
+        ol.add(new Note(Inst.RAIN, 15, 85, 0.35, 0));
+        ol.add(new Note(Inst.CITY, 14, 90, 1.0, 0));
         for (int b = 17; b <= 95; b++) {
             double v = b < 48 ? 0.9 : b < 80 ? 0.9 - (b - 48) / 32.0 * 0.4 : 0.45;
             ol.add(new Note("step" + (1 + b % 3), b, v));
@@ -316,6 +320,7 @@ public final class Music {
             case KICK: len = 0.3; break;
             case JINGLE: len = 0.15; break;
             case CITY: len = dur + 1.5; break;
+            case RAIN: len = dur + 1.5; break;
             default: len = dur;
         }
         int count = (int) (len * RATE);
@@ -436,6 +441,16 @@ public final class Music {
                     double whoosh = flt3.band(noise, 400 + 1600 * cyc, 0.5) * pass * 0.5;
                     double st = t % 23, siren = st < 6 ? Math.sin(2 * Math.PI * (st % 1.2 < 0.6 ? 660 : 820) * t) * 0.03 * Math.sin(Math.PI * st / 6) : 0;
                     x = (rumble + traffic + whoosh + siren) * 0.5 * vel * fadeIn * fadeOut;
+                    break;
+                }
+                case RAIN: {                                                 // rain: a hiss, and drops hitting things close by
+                    double fadeIn = Math.min(1, t / 1.0), fadeOut = t > dur ? Math.max(0, 1 - (t - dur) / 1.5) : 1;
+                    double noise = NOISE.nextDouble() * 2 - 1;
+                    double hiss = flt.band(noise, 5200, 1.3) * 0.5 + flt2.low(noise, 700) * 0.25;
+                    if (NOISE.nextDouble() < 0.0006) ph[0] = 0.6;                // a drop
+                    ph[0] *= 0.993;
+                    double drop = flt3.band(noise * ph[0], 2600, 0.5) * 2.5;
+                    x = (hiss + drop) * 0.12 * vel * fadeIn * fadeOut;
                     break;
                 }
                 case FIZZ: {
@@ -668,6 +683,74 @@ public final class Music {
                     double imp = r.nextDouble() < density ? (r.nextDouble() * 2 - 1) * 3 : 0;
                     double arc = (r.nextDouble() * 2 - 1) * 0.15 * Math.exp(-t / 0.3);
                     b[i] = (float) (f.band(imp + arc, 5000, 0.7) * 0.3);
+                }
+                break;
+            }
+            case "flick": {                                                 // a lighter wheel: a scrape, sparks, a tick of metal
+                n = (int) (RATE * 0.35);
+                for (int i = 0; i < n; i++) {
+                    double t = (double) i / RATE, noise = r.nextDouble() * 2 - 1;
+                    double scrape = t < 0.07 ? f.band(noise, 3500, 0.7) * (0.6 + 0.4 * Math.sin(t * 2 * Math.PI * 180)) : 0;
+                    double spark = r.nextDouble() < 0.02 * Math.exp(-t / 0.08) ? (r.nextDouble() * 2 - 1) * 2 : 0;
+                    double tick = Math.sin(2 * Math.PI * 4200 * t) * Math.exp(-t / 0.008);
+                    b[i] = (float) ((scrape * 0.5 + f2.band(spark, 6500, 0.7) * 0.6 + tick * 0.15) * 0.7);
+                }
+                break;
+            }
+            case "catch": {                                                 // the flame catching: a soft breathy whoosh
+                n = (int) (RATE * 0.8);
+                for (int i = 0; i < n; i++) {
+                    double t = (double) i / RATE, noise = r.nextDouble() * 2 - 1;
+                    double env = Math.min(1, t / 0.03) * Math.exp(-t / 0.3) * (1 + 0.3 * Math.sin(t * 2 * Math.PI * 9));
+                    b[i] = (float) (f.low(noise, 900 + 700 * Math.min(1, t / 0.1)) * env * 0.9);
+                }
+                break;
+            }
+            case "clack": {                                                 // the lid snapping shut
+                n = (int) (RATE * 0.15);
+                for (int i = 0; i < n; i++) {
+                    double t = (double) i / RATE, x = 0;
+                    for (double a : new double[]{0, 0.028}) if (t >= a) x += (Math.sin(2 * Math.PI * 2800 * (t - a)) + 0.6 * Math.sin(2 * Math.PI * 5100 * (t - a))) * Math.exp(-(t - a) / 0.012);
+                    x += Math.sin(2 * Math.PI * 300 * t) * Math.exp(-t / 0.02) * 0.6;
+                    b[i] = (float) (x * 0.22);
+                }
+                break;
+            }
+            case "drag": {                                                  // drawing on the cigarette: breath and the paper crackling
+                n = (int) (RATE * 1.1);
+                for (int i = 0; i < n; i++) {
+                    double t = (double) i / RATE, noise = r.nextDouble() * 2 - 1, env = Math.sin(Math.PI * t / 1.1);
+                    double breath = f.band(noise, 900, 0.5) * env * 0.25;
+                    double crackle = r.nextDouble() < 0.006 * env ? (r.nextDouble() * 2 - 1) * 1.5 : 0;
+                    b[i] = (float) (breath + f2.band(crackle, 5000, 0.6) * 0.5);
+                }
+                break;
+            }
+            case "exhale": {                                                // smoke breathed out, falling away
+                n = (int) (RATE * 1.5);
+                for (int i = 0; i < n; i++) {
+                    double t = (double) i / RATE, noise = r.nextDouble() * 2 - 1;
+                    double env = Math.min(1, t / 0.12) * Math.exp(-t / 0.55);
+                    b[i] = (float) ((f.band(noise, 1400 - 700 * Math.min(1, t / 1.2), 0.6) * 0.5 + f2.low(noise, 300) * 0.3) * env * 0.6);
+                }
+                break;
+            }
+            case "sizzle": {                                                // the butt hitting a puddle
+                n = (int) (RATE * 0.5);
+                for (int i = 0; i < n; i++) {
+                    double t = (double) i / RATE, noise = r.nextDouble() * 2 - 1;
+                    double pop = r.nextDouble() < 0.01 * Math.exp(-t / 0.1) ? 2 : 0;
+                    b[i] = (float) ((f.band(noise, 6000, 1.2) * 0.5 * Math.exp(-t / 0.15) + f2.band(pop * noise, 3500, 0.6)) * 0.45);
+                }
+                break;
+            }
+            case "grind": {                                                 // a boot coming down and twisting on wet grit
+                n = (int) (RATE * 0.8);
+                for (int i = 0; i < n; i++) {
+                    double t = (double) i / RATE, noise = r.nextDouble() * 2 - 1;
+                    double thud = (Math.sin(2 * Math.PI * 80 * t) + f2.low(noise, 250)) * Math.exp(-t / 0.05) * 0.6;
+                    double grains = t > 0.08 && t < 0.7 ? f.band(noise, 1800, 0.5) * (0.5 + 0.5 * Math.signum(Math.sin(t * 2 * Math.PI * 38))) * Math.sin(Math.PI * (t - 0.08) / 0.62) : 0;
+                    b[i] = (float) ((thud + grains * 0.5) * 0.6);
                 }
                 break;
             }
@@ -1066,7 +1149,7 @@ public final class Music {
             write(new java.io.File(dir, s.name + ".wav"), all);
             System.out.println(s.name + ": " + String.format("%.1f", all.length / (double) RATE) + " s, rendered in " + (System.currentTimeMillis() - t0) + " ms");
         }
-        for (String e : new String[]{"dryer", "hum", "latch", "door", "shut", "move", "capture", "check", "coin", "deny", "card", "step1", "step2", "step3", "drip", "creak", "chair", "hiss", "crack", "sparks"}) write(new java.io.File(dir, "sfx_" + e + ".wav"), makeSfx(e));
+        for (String e : new String[]{"flick", "catch", "clack", "drag", "exhale", "sizzle", "grind", "latch", "door", "shut", "move", "capture", "check", "coin", "deny", "card", "step1", "step2", "step3", "drip", "creak", "chair", "hiss", "crack", "sparks"}) write(new java.io.File(dir, "sfx_" + e + ".wav"), makeSfx(e));
     }
 
     private static void write(java.io.File f, float[] x) throws Exception {

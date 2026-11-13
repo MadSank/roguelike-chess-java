@@ -10,8 +10,10 @@ import java.util.Random;
 /**
  * The opening scene, timed to the "opening" song in Music (96 beats a minute; one footstep a beat):
  *
- *   beats   0-16   a bathroom: only the tiles, under a flickering tube; you hear the tap, the hands, the door.
- *   beats  16-100  outside: a guard in a long coat walks out of the washroom booth and across a skywalk
+ *   beats   0-16   a smoke break in the rain: a lighter fails, catches and lights his hood from below (the
+ *                  face inside stays black); drags, smoke into the neon; he drops it, the camera follows it
+ *                  down, a boot grinds it out.
+ *   beats  16-100  outside: the guard in a long coat walks out from under an awning and across a skywalk
  *                  through an overcrowded, rotting megacity (towers in haze, a shaft of light from above,
  *                  traffic, neon, beggars, rubbish heaps, fires in drums, rats, graffiti, a propaganda
  *                  screen, drizzle, a crowd far below). The credits are
@@ -61,7 +63,7 @@ public final class Opening {
     // ─── The whole thing ────────────────────────────────────────
     public static void draw(Graphics2D g, double t) {
         double b = t / SPB;
-        if (b < 16) bathroom(g, b);
+        if (b < 16) smokeBreak(g, b, t);
         else if (b < 100) outside(g, b, t);
         else if (b < 108.5) room(g, b, t);
         else if (b < 109.1) {                                       // a quick pan across the table to you
@@ -84,64 +86,208 @@ public final class Opening {
         if (b < 10) Px.text(g, "any key to skip", W - 98, H - 12, new Color(110, 110, 104), 1);
     }
 
-    // ═══ 1. The bathroom ═════════════════════════════════════════
-    private static BufferedImage tiles;
+    // ═══ 1. A smoke break in the rain ═══════════════════════════
+    // Beats: sparks at 2 (fails) and 3 (catches at 3.2), lid shut at 5, drags at 6 and 9, smoke out at 7.2
+    // and 10.2, dropped at 12 (lands 12.8), the boot at 13.5, he goes at 14.8. Sounds are on the same beats.
+    private static final int MOUTH_X = 300, MOUTH_Y = 196, GROUND = 500;
+    private static boolean[] hoodMask;
+    private static int[] hoodShade;
+    private static final int HW = 330, HH = 330;                            // the close-up silhouette's box, at (40, 40)
 
-    private static BufferedImage tiles() {
-        if (tiles != null) return tiles;
-        BufferedImage img = new BufferedImage(W, H, BufferedImage.TYPE_INT_RGB);
-        Color[] tile = Shade.ramp(new Color(176, 192, 176), 7), grout = Shade.ramp(new Color(70, 76, 66), 4);
-        Color rust = new Color(120, 70, 40);
-        int size = 22;
-        for (int y = 0; y < H; y++) {
-            for (int x = 0; x < W; x++) {
-                int tx = x / size, ty = y / size, lx = x % size, ly = y % size;
-                boolean g = lx >= size - 2 || ly >= size - 2;
-                double v = 0.78 - 0.32 * y / H - 0.25 * Math.pow(Math.abs(x - W / 2.0) / (W / 2.0), 2);   // the tube is above; edges in grime
-                Color c;
-                if (g) {
-                    v += ((hash(x, y) & 7) - 3) * 0.03;
-                    c = grout[(int) Math.max(0, Math.min(3, Math.round(v * 3 + BAYER[y & 3][x & 3] / 16.0 - 0.47)))];
-                } else {
-                    int id = hash(tx, ty);
-                    v += ((id % 5) - 2) * 0.03;
-                    if (lx == 0 || ly == 0) v += 0.12;                       // bevel
-                    if (lx == size - 3 || ly == size - 3) v -= 0.12;
-                    if (id % 11 == 0 && Math.abs(lx - ly) < 1) v -= 0.4;      // a crack
-                    if ((hash(x, y) & 31) == 0) v -= 0.08;
-                    c = tile[(int) Math.max(0, Math.min(6, Math.round(v * 6 + BAYER[y & 3][x & 3] / 16.0 - 0.47)))];
-                    int streak = hash(tx, 99) % 9;                            // rust running down from the joints
-                    if (streak == 0 && Math.abs(lx - 10 - (hash(tx, 98) % 6)) < 2 && (hash(x, y / 3) & 3) != 0) c = Shade.mix(c, rust, 0.45 * Math.min(1, (y % 120) / 60.0));
-                }
-                img.setRGB(x, y, c.getRGB());
+    /** His hooded head and shoulders in profile, facing right, as a mask with a base shading. */
+    private static void buildHood() {
+        if (hoodMask != null) return;
+        BufferedImage img = new BufferedImage(HW, HH, BufferedImage.TYPE_INT_ARGB);
+        Color[] ramp = Shade.ramp(new Color(22, 20, 26), 4);
+        Path2D h = new Path2D.Double();                                     // hood and shoulder (coordinates in the box)
+        h.moveTo(20, 330); h.curveTo(10, 250, 40, 210, 80, 190);
+        h.curveTo(60, 120, 90, 30, 170, 18);                                // up the back of the hood to its peak
+        h.curveTo(230, 12, 268, 60, 272, 120);                              // over the top to the brow
+        h.lineTo(262, 128); h.curveTo(252, 170, 256, 196, 266, 214);        // the hood's front edge
+        h.curveTo(268, 236, 250, 250, 240, 256);
+        h.curveTo(270, 280, 300, 300, 320, 330);                            // down the chest
+        h.closePath();
+        java.awt.Graphics2D hg = img.createGraphics();
+        hg.setColor(new Color(24, 21, 28));
+        hg.fill(h);
+        hg.dispose();
+        Path2D fold = new Path2D.Double();
+        fold.moveTo(150, 40); fold.curveTo(120, 110, 128, 190, 160, 240);
+        Shade.stroke(img, fold, 2f, new Color[]{new Color(16, 14, 20), new Color(18, 16, 22)});
+        hoodMask = new boolean[HW * HH];
+        hoodShade = new int[HW * HH];
+        for (int y = 0; y < HH; y++) {
+            for (int x = 0; x < HW; x++) {
+                int c = img.getRGB(x, y);
+                hoodMask[y * HW + x] = (c >>> 24) != 0;
+                hoodShade[y * HW + x] = c;
             }
         }
-        tiles = img;
-        return img;
     }
 
-    private static void bathroom(Graphics2D g, double b) {
-        g.drawImage(tiles(), 0, 0, null);
-        for (int i = 0; i < 6; i++) {                               // water running down the grout
-            int x = (hash(i, 3) % 21) * 22 + 20, y = (int) ((hash(i, 4) % 360 + b * (10 + i * 3)) % 380) - 10;
-            Px.rect(g, x, y, 2, 3, new Color(220, 234, 226));
-            Px.rect(g, x, y - 6, 2, 6, new Color(150, 170, 156, 120));
+    private static boolean faceVoid(int x, int y) {                         // inside the hood: never lit
+        double dx = (x - 252) / 26.0, dy = (y - 184) / 60.0;
+        return dx * dx + dy * dy < 1;
+    }
+
+    private static void smokeBreak(Graphics2D g, double b, double t) {
+        buildHood();
+        int oy = (int) (smooth(12, 13, b) * 200 + smooth(14.8, 16, b) * 0);   // the camera follows the cigarette down
+        Px.rect(g, 0, 0, W, H, new Color(8, 8, 12));
+        // the city behind, out of focus
+        Color[] bokehC = {new Color(240, 86, 60), new Color(90, 230, 160), new Color(250, 170, 60), new Color(230, 90, 120), new Color(110, 160, 240)};
+        for (int i = 0; i < 18; i++) {
+            int x = hash(i, 51) % W, y = hash(i, 52) % 300 - oy / 3 + (int) (Math.sin(t * 0.3 + i) * 3), r = 6 + hash(i, 53) % 12;
+            Color c = bokehC[i % bokehC.length];
+            for (int k = r; k > 0; k -= 2) {
+                g.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), 10 + (r - k) * 2));
+                g.fillOval(x - k, y - k, k * 2, k * 2);
+            }
         }
-        if (b > 0.8 && b < 13) {                                    // his shadow, moving as he washes
-            double sway = Math.sin(b * 2.4) * 18 + Math.sin(b * 5.3) * 6;
-            g.setColor(new Color(10, 16, 12, 90));
-            g.fillOval((int) (150 + sway), 250, 180, 160);
-            g.setColor(new Color(10, 16, 12, 60));
-            g.fillOval((int) (110 + sway * 1.3), 220, 260, 200);
+        // light from the flame or the ember
+        boolean flame = b > 3.2 && b < 5;
+        double drag = Math.max(Math.exp(-Math.pow((b - 6.5) / 0.5, 2)), Math.exp(-Math.pow((b - 9.5) / 0.5, 2)));
+        double light = flame ? 1.0 + 0.12 * Math.sin(t * 40) * Math.sin(t * 17) : b > 2 && b < 2.15 || b > 3 && b < 3.2 ? 0.6 : b >= 5 && b < 12 ? 0.18 + 0.3 * drag : 0;
+        int lx = flame || b < 5 ? MOUTH_X + 19 : MOUTH_X + 38, ly = flame || b < 5 ? MOUTH_Y + 14 : MOUTH_Y + 2;
+        // the hood, lit from the light below
+        double hoodOut = smooth(14.8, 15.8, b) * 260;
+        int hx0 = 40 + (int) hoodOut, hy0 = 40 - oy;
+        Color[] warm = {new Color(30, 22, 30), new Color(70, 40, 34), new Color(130, 70, 44), new Color(200, 120, 60), new Color(250, 190, 110)};
+        for (int y = 0; y < HH; y++) {
+            int sy = hy0 + y;
+            if (sy < 0 || sy >= H) continue;
+            for (int x = 0; x < HW; x++) {
+                if (!hoodMask[y * HW + x]) continue;
+                int sx = hx0 + x;
+                if (sx < 0 || sx >= W) continue;
+                Color base = new Color(hoodShade[y * HW + x]);
+                if (y > 250) base = Shade.mix(base, new Color(8, 8, 12), Math.min(1, (y - 250) / 70.0));   // the coat goes into the dark
+                double d = Math.hypot(sx - lx, (sy + oy - ly) * 1.2);
+                double lit = light * 110 / (d + 30) - 0.3;
+                if (faceVoid(x, y)) lit *= 0.12;
+                if (lit > 0) {
+                    int k = (int) Math.max(0, Math.min(4, Math.round(lit * 4 + BAYER[sy & 3][sx & 3] / 16.0 - 0.47)));
+                    base = Shade.mix(base, warm[k], Math.min(1, lit * 1.4));
+                }
+                Px.dot(g, sx, sy, faceVoid(x, y) ? Shade.mix(base, new Color(4, 2, 6), 0.8) : base);
+            }
         }
-        boolean dip = hash((int) (b * 6), 7) % 11 == 0 || (b > 10.4 && b < 10.6);
-        if (dip) Px.rect(g, 0, 0, W, H, new Color(0, 0, 0, 90));    // the tube flickers
-        if (b > 15) {                                               // the door opens: warm city light across the tiles
-            double k = smooth(15, 16, b);
-            int w = (int) (k * 300);
-            Px.rect(g, W - w, 0, w, H, new Color(255, 170, 96, 70));
-            Px.rect(g, W - w, 0, 2, H, new Color(255, 214, 160, 160));
+        // the lighter in a cupped glove, sparks, the flame
+        if (b > 1.6 && b < 5.6) {
+            double rise = b < 2 ? smooth(1.6, 2, b) : b > 5 ? 1 - smooth(5, 5.6, b) : 1;
+            int hx = MOUTH_X + 10, hy = MOUTH_Y + 34 + (int) ((1 - rise) * 120) - oy;
+            g.setColor(new Color(28, 24, 28));
+            g.fillRoundRect(hx - 22, hy + 10, 62, 40, 18, 18);                       // a gloved hand cupped round it
+            g.fillRoundRect(hx - 30, hy + 30, 30, 50, 12, 12);
+            Px.rect(g, hx + 2, hy - 8, 14, 22, new Color(140, 140, 146));            // the lighter
+            Px.rect(g, hx + 2, hy - 8, 2, 22, new Color(210, 210, 214));
+            Px.rect(g, hx + 2, hy - 8, 14, 2, new Color(90, 90, 96));
+            if (light > 0.3) {
+                g.setColor(new Color(255, 180, 90, (int) (70 * light)));
+                g.fillRoundRect(hx - 22, hy + 10, 62, 14, 12, 12);
+            }
+            boolean spark = (b > 2 && b < 2.15) || (b > 3 && b < 3.2);
+            if (spark) for (int k = 0; k < 14; k++) Px.rect(g, hx + 9 + (int) ((hash(k, (int) (b * 30)) % 31) - 15), hy - 10 - hash(k, 3) % 20, 2, 2, new Color(255, 230, 140));
+            if (flame) {
+                int fh = 20 + (int) (3 * Math.sin(t * 31));
+                for (int y = 0; y < fh; y++) {
+                    int w = (int) (6 * Math.sin(Math.PI * (y + 1) / (fh + 1))) + 1;
+                    Color c = y > fh * 0.6 ? new Color(255, 250, 220) : y > fh * 0.3 ? new Color(255, 200, 90) : new Color(240, 120, 40);
+                    Px.rect(g, hx + 9 - w / 2 + (int) (Math.sin(t * 23 + y) * 0.6), hy - 7 - (fh - y), w, 1, c);
+                }
+            }
         }
+        // the cigarette and its ember
+        if (b > 2 && b < 12) {
+            int cy = MOUTH_Y - oy;
+            Px.rect(g, MOUTH_X - 4, cy, 40, 5, new Color(214, 206, 190));
+            Px.rect(g, MOUTH_X - 4, cy + 4, 40, 1, new Color(150, 144, 132));
+            Px.rect(g, MOUTH_X - 4, cy, 12, 5, new Color(196, 150, 90));
+            if (b > 3.6) {
+                double glow = 0.4 + 0.6 * drag;
+                Px.rect(g, MOUTH_X + 36, cy, 5, 5, Shade.mix(new Color(120, 30, 20), new Color(255, 120, 40), glow));
+                Px.rect(g, MOUTH_X + 41, cy + 1, 1, 3, new Color(90, 86, 84));
+                if (glow > 0.6) Px.rect(g, MOUTH_X + 37, cy + 1, 3, 2, new Color(255, 230, 150));
+                g.setColor(new Color(255, 120, 50, (int) (40 * glow)));
+                g.fillOval(MOUTH_X + 26, cy - 10, 26, 24);
+            }
+        }
+        // smoke breathed out into the neon
+        for (double out : new double[]{7.2, 10.2}) {
+            double age = b - out;
+            if (age < 0 || age > 4.5) continue;
+            for (int k = 0; k < 24; k++) {
+                double ka = age - k * 0.05;
+                if (ka < 0) continue;
+                int cx = MOUTH_X + 10 + (int) (ka * 46 + Math.sin(ka * 2 + k) * 8), cy = MOUTH_Y + 2 - (int) (ka * 26) - oy + (int) (Math.sin(k * 1.7) * 5);
+                int r = 4 + (int) (ka * 9);
+                double dens = 0.55 * Math.max(0, 1 - age / 4.5) / (1 + ka);
+                Color c = k % 3 == 0 ? new Color(150, 140, 196) : new Color(176, 176, 182);
+                for (int y = -r / 2; y <= r / 2; y++) for (int x = -r; x <= r; x++) {
+                    double e = (x * x) / (double) (r * r) + (y * y) / (double) (r * r / 4.0 + 1);
+                    if (e < 1 && BAYER[(cy + y) & 3][(cx + x) & 3] / 16.0 < dens * (1 - e)) Px.dot(g, cx + x, cy + y, c);
+                }
+            }
+        }
+        // the ground: wet, neon in the puddles
+        int gy = GROUND - oy;
+        if (gy < H) {
+            for (int y = Math.max(0, gy); y < H; y++) {
+                for (int x = 0; x < W; x++) {
+                    int wy = y + oy;                                                     // ground space, so it doesn't swim as the camera moves
+                    double v = 0.16 + ((hash(x / 3, wy / 3) & 7) - 3) * 0.012 + ((hash(x, wy) & 31) == 0 ? 0.07 : 0);
+                    Color c = haze(v, x, y);
+                    for (int pd = 0; pd < 5; pd++) {                                     // puddles holding the neon
+                        double px = 60 + pd * 97 + hash(pd, 70) % 40, py = GROUND + 14 + hash(pd, 71) % 40, rx = 30 + hash(pd, 72) % 40, ry = 6 + hash(pd, 73) % 6;
+                        double e = Math.pow((x - px) / rx, 2) + Math.pow((wy - py) / ry, 2) + Math.sin(x * 0.4 + pd) * 0.08;
+                        if (e < 1) {
+                            Color n = bokehC[pd % bokehC.length];
+                            c = Shade.mix(new Color(20, 22, 28), n, (0.25 + 0.2 * Math.sin(t * 3 + x * 0.2 + pd)) * (1 - e));
+                            if ((hash(x, (int) (t * 8)) & 63) == 0) c = new Color(170, 180, 190);   // rain hitting it
+                        }
+                    }
+                    Px.dot(g, x, y, c);
+                }
+            }
+        }
+        // the cigarette falls, glows on the ground, and the boot comes down on it
+        if (b >= 12 && b < 13.6) {
+            double k = Math.min(1, (b - 12) / 0.8);
+            int x = MOUTH_X + 6 + (int) (k * 20), y = (int) (MOUTH_Y + (GROUND + 2 - MOUTH_Y) * k * k) - oy;
+            Px.rect(g, x, y, 30, 4, new Color(214, 206, 190));
+            Px.rect(g, x, y, 9, 4, new Color(196, 150, 90));
+            Px.rect(g, x + 30, y, 4, 4, new Color(255, 110, 40));
+            if (k >= 1) {
+                g.setColor(new Color(255, 120, 50, 40));
+                g.fillOval(x - 4, y - 4, 22, 10);
+                for (int w = 0; w < 6; w++) Px.dot(g, x + 9 + (int) (Math.sin(t * 3 + w) * 2), y - 3 - w * 3 - (int) ((t * 10) % 3), new Color(160, 160, 166, 120));
+            }
+        }
+        if (b >= 13.4 && b < 14.9) {
+            double down = smooth(13.4, 13.6, b) * (1 - smooth(14.3, 14.8, b));
+            int twist = b > 13.6 && b < 14.3 ? (int) (Math.sin(b * 40) * 3) : 0;
+            int by = (int) (GROUND - 30 - (1 - down) * 260) - oy;
+            g.setColor(new Color(22, 20, 22));
+            g.fillRoundRect(MOUTH_X - 20 + twist, by, 76, 28, 10, 10);                // the boot
+            g.fillRect(MOUTH_X - 6 + twist, by - 120, 40, 124);                       // the leg above it
+            Px.rect(g, MOUTH_X - 20 + twist, by + 26, 76, 3, new Color(10, 8, 10));  // the sole
+            Px.rect(g, MOUTH_X - 18 + twist, by + 2, 60, 1, new Color(70, 64, 60));
+        }
+        if (b >= 14.3) {                                                          // what's left: a black smear
+            int y = GROUND + 2 - oy;
+            for (int k = 0; k < 16; k++) Px.dot(g, MOUTH_X + 18 + k, y + (k % 3) - 1, new Color(30, 26, 22));
+            Px.rect(g, MOUTH_X + 22, y, 5, 1, new Color(190, 182, 168));
+        }
+        // rain across everything; near the flame it catches the light
+        for (int i = 0; i < 140; i++) {
+            int x = Math.floorMod((int) (hash(i, 61) % (W + 80) - t * 50), W + 80) - 40;
+            int y = (int) ((hash(i, 62) % H + t * (260 + i % 6 * 40)) % (H + 20)) - 10;
+            boolean near = light > 0.2 && Math.hypot(x - lx, y - ly + oy) < 70 * light;
+            Color c = near ? new Color(255, 200, 140, 160) : new Color(150, 156, 170, 60);
+            for (int k = 0; k < 6; k++) Px.dot(g, x - k / 3, y + k, c);
+        }
+        if (b < 1.2) Px.rect(g, 0, 0, W, H, new Color(0, 0, 0, (int) (255 * (1 - smooth(0, 1.2, b)))));
+        if (b > 15.4) Px.rect(g, 0, 0, W, H, new Color(0, 0, 0, (int) (255 * smooth(15.4, 16, b))));
     }
 
     // ═══ 2. Outside: the city and the skywalk ═══════════════════
@@ -580,21 +726,24 @@ public final class Opening {
         Px.rect(g, 0, 248, W, 1, new Color(96, 92, 76));
         for (int wx = Math.floorDiv(cam, 48) * 48; wx < cam + W; wx += 48) Px.rect(g, wx - cam, 248, 2, 24, new Color(34, 32, 30));
 
-        // the washroom booth he comes out of
+        // where he was standing: an awning over a shuttered doorway, a drainpipe, the crushed cigarette
         int bx = -cam;
-        if (bx > -100) {
-            for (int y = 166; y < 272; y++) for (int x = 0; x < 96; x++) Px.dot(g, bx + x, y, haze(0.22 + (x < 3 ? 0.12 : 0) - (y > 250 ? 0.06 : 0) + ((hash(x, y) & 15) == 0 ? -0.08 : 0), x, y));
-            Px.rect(g, bx, 164, 96, 3, new Color(70, 66, 56));
-            double open = smooth(15, 16.3, b);
-            Px.rect(g, bx + 52, 190, 26, 82, new Color(24, 22, 22));
-            if (open > 0) {
-                Px.rect(g, bx + 53, 191, (int) (24 * open), 81, new Color(170, 190, 170));          // fluorescent inside, tiles
-                for (int y = 193; y < 272; y += 8) Px.rect(g, bx + 53, y, (int) (24 * open), 1, new Color(130, 148, 130));
-                g.setColor(new Color(170, 210, 170, 50));
-                g.fillRect(bx + 50, 272, 40, 12);
+        if (bx > -110) {
+            for (int y = 150; y < 272; y++) for (int x = 0; x < 100; x++) Px.dot(g, bx + x, y, haze(0.16 + (x < 3 ? 0.1 : 0) + ((hash(x, y) & 15) == 0 ? -0.06 : 0), x, y));
+            for (int y = 196; y < 272; y += 3) Px.rect(g, bx + 30, y, 44, 2, new Color(56, 54, 50));   // a rusted shutter
+            Px.rect(g, bx + 30, 196, 44, 1, new Color(90, 70, 50));
+            Px.rect(g, bx + 10, 180, 84, 6, new Color(70, 40, 34));                                // the awning, torn
+            for (int x = 10; x < 94; x += 7) Px.rect(g, bx + x, 186, 4, 3 + hash(x, 2) % 5, new Color(70, 40, 34));
+            boolean lamp = hash((int) (t * 5), 8) % 5 != 0;
+            Px.rect(g, bx + 46, 188, 8, 3, lamp ? new Color(250, 220, 160) : new Color(80, 70, 60));
+            if (lamp) {
+                g.setColor(new Color(250, 210, 140, 28));
+                g.fillOval(bx + 10, 186, 80, 96);
             }
-            Px.rect(g, bx + 53 + (int) (24 * open), 191, Math.max(3, (int) (24 * (1 - open))), 81, new Color(64, 70, 72));   // the door panel
-            neonText(g, "WC", bx + 59, 176, new Color(110, 240, 150), 1, hash((int) (t * 4), 3) % 9 != 0);
+            Px.rect(g, bx + 94, 150, 3, 122, new Color(40, 44, 44));                               // a drainpipe, overflowing
+            for (int k = 0; k < 4; k++) Px.dot(g, bx + 95, 272 + (int) ((t * 50 + k * 4) % 12), new Color(150, 170, 170));
+            Px.rect(g, bx + 70, 279, 14, 1, new Color(30, 26, 22));                                // the crushed cigarette
+            Px.rect(g, bx + 74, 279, 4, 1, new Color(190, 182, 168));
         }
         // filth: litter everywhere, rubbish heaps with flies, graffiti, beggars, a fire in a barrel, rats
         filth(g, b, t, cam);

@@ -28,8 +28,9 @@ Don't copy Undertale's characters, its heart cursor, or its FIGHT/ACT/ITEM/MERCY
 ## Direction change (2026-11-13): the megacity, prisoners and guards
 The user gave a concept image (a huge, hazy, overcrowded city of towers under a shaft of light, cables,
 neon, flying traffic) and asked for:
-- **An opening on launch** (`Opening.java`, timed by the "opening" song): a bathroom where you see only
-  tiles and hear someone wash; he opens the door and the camera follows him from the side across a
+- **An opening on launch** (`Opening.java`, timed by the "opening" song): it began as a bathroom; the user
+  said it didn't read as one, so it is now a smoke break in the rain (see Status). Then the camera follows
+  him from the side across a
   skywalk through the rotting city (credits hidden on neon signs: A GAME BY MADDOX, SAMBAR BOY, and
   the ASHES title); his footsteps turn into the music; at the far door he puts on his mask, enters the
   game room, takes his place among the guards; the camera turns to you and moves in; then the menu.
@@ -92,6 +93,14 @@ neon, flying traffic) and asked for:
 
 ## Status
 (newest first)
+- 2026-11-13 (smoke break): the bathroom idea was dropped ("doesn't convey a bathroom"); the user chose a
+  smoke break. Beats 0-16: dark rain and out-of-focus neon; a lighter sparks and fails (2), catches (3),
+  its flame lights the hood from below while the face inside stays black; the lid snaps shut (5); drags
+  make the ember glow (6, 9), smoke breathed out into the neon (7.2, 10.2); he drops it (12), the camera
+  follows it down to a wet street with neon in the puddles, a boot grinds it out (13.6), he goes (14.8).
+  Sounds on the same beats: rain (new RAIN instrument), flick, catch, clack, drag, exhale, sizzle, grind;
+  each measured 6-12 dB above the rain. On the skywalk he now starts under a torn awning by a shuttered
+  doorway (the crushed butt by his feet) instead of a WC booth.
 - 2026-11-13 (feedback 1): the user said the washing sounds were bad, the masks too round and comical
   (the plague doctor most), and asked for a more disgusting skywalk. They declined downloading real
   recordings (CC BY sounds from actions.google.com/sounds were offered), so the bathroom is now
