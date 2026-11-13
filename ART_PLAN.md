@@ -93,6 +93,12 @@ neon, flying traffic) and asked for:
 
 ## Status
 (newest first)
+- 2026-11-13 (card faces, hands): `CardArt.java` draws every card: a frame whose metal is its rarity
+  (iron, blued steel, gold with gem corners), a night window with an emblem per card (all 19 in
+  `emblem()`), an engraved band with a rarity gem, two eyes on global cards. No text on the card; the
+  name is on the tag and in the hover line. `card(c, w, h)`: 48x64 on the counter, 96x128 in the
+  draft, 24x32 in your fingers. Hands redrawn (`PixelGame.hand`): yours a thin dirty hand with a frayed
+  sleeve, his a black leather glove with a buttoned cuff that comes down flat (and pins you flat).
 - 2026-11-13 (candle, counter, theft): rules from the user.
   * Cards are played by burning them: a candle stands beside the board (`PixelGame.candle`, `CANDLE_X`).
     Click a card in the hand to pick it up (it follows the mouse), click the candle to burn it (1.3 s:
