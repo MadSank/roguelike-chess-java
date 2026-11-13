@@ -113,6 +113,19 @@ public final class PixelArt {
     /** The person's upper body as a small image (SPRITE_W x SPRITE_H), hands resting at the bottom edge. */
     public static BufferedImage person(Person who, double t, String reaction, double p) {
         int[] o = pose(t, reaction, p);
+        BufferedImage art = art(who);
+        if (art != null) {                                              // a picture made for this person: move it whole
+            String key = who.name + "#art" + o[0] + "," + (o[2] / 2) + "," + o[3];
+            BufferedImage img = CACHE.get(key);
+            if (img == null) {
+                img = new BufferedImage(SPRITE_W, SPRITE_H, BufferedImage.TYPE_INT_ARGB);
+                java.awt.Graphics2D g = img.createGraphics();
+                g.drawImage(art, (SPRITE_W - art.getWidth()) / 2 + o[3] + o[1] / 2, SPRITE_H - art.getHeight() + o[0] + o[2] / 2, null);
+                g.dispose();
+                CACHE.put(key, img);
+            }
+            return img;
+        }
         int beat = (int) Math.floor(t * 3);                             // eye glints change a few times a second
         String key = who.name + o[0] + "," + o[1] + "," + o[2] + "," + o[3] + "," + beat % 20;
         BufferedImage img = CACHE.get(key);
@@ -121,6 +134,28 @@ public final class PixelArt {
             CACHE.put(key, img);
         }
         return img;
+    }
+
+    // ─── Pictures made outside the code (tools/pixelgen) ─────────
+    private static final java.util.Map<String, java.util.Optional<BufferedImage>> ART = new java.util.HashMap<>();
+
+    /**
+     * A picture for this person from assets/people/<name>.png (e.g. "Beak Guard" -> beak_guard.png), or null
+     * to draw them in code. Pictures stand bottom-centre in the 150 x 140 sprite.
+     */
+    private static BufferedImage art(Person who) {
+        return ART.computeIfAbsent(who.name, n -> {
+            String file = n.toLowerCase().replaceFirst("^the ", "").replace(' ', '_') + ".png";
+            try {
+                java.io.File f = new java.io.File("assets/people/" + file);
+                if (f.exists()) return java.util.Optional.of(javax.imageio.ImageIO.read(f));
+                java.net.URL u = PixelArt.class.getResource("/assets/people/" + file);
+                if (u != null) return java.util.Optional.of(javax.imageio.ImageIO.read(u));
+            } catch (java.io.IOException e) {
+                System.err.println("Couldn't read " + file + ": " + e.getMessage());
+            }
+            return java.util.Optional.empty();
+        }).orElse(null);
     }
 
     /** Recently drawn poses, so a figure is shaded only when it actually changes. */
