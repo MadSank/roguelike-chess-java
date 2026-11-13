@@ -777,18 +777,7 @@ public class PixelGame extends JPanel {
     private static final java.util.Map<String, BufferedImage> CARD_SPRITES = new java.util.HashMap<>();
 
     private static BufferedImage cardSprite(Card c) {
-        return CARD_SPRITES.computeIfAbsent(c.getName(), k -> {
-            BufferedImage img = new BufferedImage(24, 32, BufferedImage.TYPE_INT_ARGB);
-            Graphics2D g = Px.pen(img);
-            Px.rect(g, 0, 0, 24, 32, Px.BLACK);
-            Px.rect(g, 1, 1, 22, 30, new Color(214, 200, 168));
-            Px.rect(g, 2, 2, 20, 2, rarity(c));
-            Px.rect(g, 2, 28, 20, 2, rarity(c));
-            Px.centred(g, c.getName().substring(0, 1), 12, 10, Px.WOOD_DARK, 2);
-            for (int i = 0; i < 6; i++) Px.dot(g, 4 + (i * 7) % 16, 6 + (i * 11) % 22, new Color(180, 160, 128));   // foxing
-            g.dispose();
-            return img;
-        });
+        return CardArt.card(c, 24, 32);
     }
 
     /** The candle beside you on the table, and the card burning over it. */
@@ -1282,21 +1271,51 @@ public class PixelGame extends JPanel {
     private static BufferedImage hand(boolean dealerHand, boolean open) {
         return HANDS.computeIfAbsent(dealerHand + "," + open, k -> {
             BufferedImage img = new BufferedImage(40, 130, BufferedImage.TYPE_INT_ARGB);
-            Color[] sleeve = Shade.ramp(dealerHand ? new Color(52, 46, 52) : new Color(88, 80, 70), 4);
-            Color[] skin = dealerHand ? Shade.ramp(new Color(40, 34, 38), 4) : Shade.ramp(new Color(196, 154, 126), 4);
-            if (dealerHand) {                                                   // from the top down, palm down
-                Shade.part(img, new java.awt.geom.RoundRectangle2D.Double(8, 0, 24, 100, 8, 8), sleeve, 5);
-                Shade.part(img, new java.awt.geom.RoundRectangle2D.Double(7, 96, 26, 18, 8, 8), skin, 3);
-                for (int f = 0; f < 4; f++) Shade.part(img, new java.awt.geom.RoundRectangle2D.Double(9 + f * 6, 108, 5, open ? 16 : 10, 3, 3), skin, 1.5);
-                Shade.part(img, new java.awt.geom.RoundRectangle2D.Double(30, 100, 6, 12, 3, 3), skin, 1.5);
-            } else {                                                            // from the bottom up, reaching
-                Shade.part(img, new java.awt.geom.RoundRectangle2D.Double(9, 30, 22, 100, 8, 8), sleeve, 5);
-                for (int i = 0; i < 5; i++) Shade.rect(img, 9 + i * 5, 30 + (i % 2) * 3, 3, 2, sleeve[0]);   // frayed cuff
-                Shade.part(img, new java.awt.geom.RoundRectangle2D.Double(9, 14, 22, 20, 8, 8), skin, 3);
-                if (open) for (int f = 0; f < 4; f++) Shade.part(img, new java.awt.geom.RoundRectangle2D.Double(10 + f * 5.2, 2 + Math.abs(f - 1.5) * 2, 4.5, 16, 3, 3), skin, 1.5);
-                else Shade.part(img, new java.awt.geom.RoundRectangle2D.Double(10, 8, 20, 10, 6, 6), skin, 2);
-                Shade.part(img, new java.awt.geom.RoundRectangle2D.Double(2, 18, 9, 6, 3, 3), skin, 1.5);   // thumb
-                Shade.rect(img, 12, 22, 16, 1, new Color(140, 96, 80));
+            if (dealerHand) {                                                   // his: a coat cuff, a black leather glove, palm down
+                Color[] coat = Shade.ramp(new Color(50, 44, 50), 4), glove = Shade.ramp(new Color(36, 30, 34), 4);
+                java.awt.geom.Path2D sl = new java.awt.geom.Path2D.Double();
+                sl.moveTo(6, 0); sl.lineTo(34, 0); sl.lineTo(31, 62); sl.lineTo(9, 62); sl.closePath();
+                Shade.part(img, sl, coat, 4);
+                Shade.part(img, new java.awt.geom.Rectangle2D.Double(8, 52, 24, 10), Shade.ramp(new Color(70, 62, 66), 3), 2);   // the cuff
+                Shade.rect(img, 12, 56, 2, 2, new Color(170, 150, 100));
+                Shade.rect(img, 17, 56, 2, 2, new Color(170, 150, 100));
+                java.awt.geom.Path2D h = new java.awt.geom.Path2D.Double();
+                h.moveTo(13, 60); h.lineTo(27, 60); h.lineTo(30, 86); h.lineTo(10, 86); h.closePath();
+                Shade.part(img, h, glove, 3);
+                if (open) {                                                     // fingers flat, together, pointing at you
+                    Shade.part(img, new java.awt.geom.RoundRectangle2D.Double(10, 82, 20, 26, 8, 8), glove, 2);
+                    for (int x = 15; x <= 25; x += 5) Shade.rect(img, x, 88, 1, 18, new Color(16, 12, 14));
+                } else {                                                        // closed: a fist
+                    Shade.part(img, new java.awt.geom.RoundRectangle2D.Double(9, 82, 22, 14, 8, 8), glove, 2);
+                    for (int x = 13; x <= 25; x += 4) Shade.part(img, new java.awt.geom.Ellipse2D.Double(x, 92, 5, 5), glove, 1);
+                }
+                Shade.stroke(img, new java.awt.geom.Line2D.Double(29, 66, 34, 80), 5, glove);   // thumb
+                Shade.rect(img, 14, 64, 12, 1, new Color(70, 60, 64));                          // a seam across the back
+            } else {                                                            // yours: a ragged sleeve, a thin dirty hand, palm down
+                Color[] sleeve = Shade.ramp(new Color(86, 78, 68), 4), skin = Shade.ramp(new Color(184, 144, 118), 5);
+                java.awt.geom.Path2D sl = new java.awt.geom.Path2D.Double();
+                sl.moveTo(7, 130); sl.lineTo(33, 130); sl.lineTo(28, 46); sl.lineTo(12, 46); sl.closePath();
+                Shade.part(img, sl, sleeve, 4);
+                for (int x = 12; x < 28; x += 3) Shade.rect(img, x, 44 + (x % 2) * 2, 2, 3, sleeve[1]);   // frayed cuff
+                Shade.part(img, new java.awt.geom.RoundRectangle2D.Double(14, 28, 12, 20, 5, 5), skin, 2);   // the wrist
+                java.awt.geom.Path2D h = new java.awt.geom.Path2D.Double();
+                h.moveTo(14, 32); h.lineTo(26, 32); h.lineTo(28, 15); h.lineTo(12, 15); h.closePath();
+                Shade.part(img, h, skin, 2);
+                if (open) {                                                     // fingers straight, a little apart, reaching
+                    double[] len = {12, 15, 14, 11};
+                    for (int f = 0; f < 4; f++) {
+                        double fx = 12.5 + f * 3.8;
+                        Shade.part(img, new java.awt.geom.RoundRectangle2D.Double(fx, 17 - len[f], 3.4, len[f] + 1, 3, 3), skin, 1);
+                        Shade.px(img, (int) (fx + 1.5), (int) (17 - len[f] + 1), new Color(150, 116, 100));   // nails
+                    }
+                } else {                                                        // closed round something: knuckles on top
+                    Shade.part(img, new java.awt.geom.RoundRectangle2D.Double(11, 8, 18, 10, 6, 6), skin, 2);
+                    for (int f = 0; f < 4; f++) Shade.part(img, new java.awt.geom.Ellipse2D.Double(11.5 + f * 4.2, 6, 4.5, 5), skin, 1);
+                }
+                Shade.stroke(img, new java.awt.geom.Line2D.Double(13, 28, 7, 17), 3.5f, skin);   // thumb
+                Shade.rect(img, 15, 22, 10, 1, new Color(150, 110, 92));                         // tendons
+                Shade.rect(img, 16, 26, 8, 1, new Color(150, 110, 92));
+                for (int i = 0; i < 5; i++) Shade.px(img, 13 + (i * 7) % 14, 18 + (i * 5) % 14, new Color(120, 92, 76));   // dirt
             }
             return img;
         });
@@ -1311,7 +1330,7 @@ public class PixelGame extends JPanel {
         else if (pack) {
             Px.rect(g, x - 14, y - 20, 28, 20, new Color(70, 40, 90));
             Px.rect(g, x - 14, y - 12, 28, 3, new Color(170, 120, 60));
-        } else if (card != null) g.drawImage(cardSprite(card), x - 12, y - 32, null);
+        } else if (card != null) g.drawImage(CardArt.card(card, 48, 64), x - 24, y - 64, null);
     }
 
     /** A paper price tag on the counter. */
@@ -1485,10 +1504,10 @@ public class PixelGame extends JPanel {
             if (k > 0.5 && k < 1.0 && k >= 0.75) drawItem(g, piece, card, false, dX + 18, dY + 128);
             if (k > 0.75 && k < 1.35) coins(g, 262, d.y + 2, 3);
         }
-        if (dY > -130) g.drawImage(hand(true, !(d.kind.equals("steal") && d.caught)), dX - 20, dY, null);
+        if (dY > -130) g.drawImage(hand(true, !dealerTakes), dX - 20, dY, null);
         if (carrying) drawItem(g, piece, card, d.pack, myX, myY + 4);
         g.drawImage(hand(false, myOpen), myX - 20, myY, null);
-        if (d.kind.equals("steal") && d.caught && k > 0.7 && k < 1.6) g.drawImage(hand(true, false), dX - 20, dY, null);   // his on top of yours
+        if (d.kind.equals("steal") && d.caught && k > 0.7 && k < 1.6) g.drawImage(hand(true, true), dX - 20, dY, null);   // his flat on top of yours
         if (k >= d.length()) {
             anim = null;
             d.done.run();
@@ -1552,13 +1571,16 @@ public class PixelGame extends JPanel {
             int price = shop().cardPrice(c), x = 70 + i * 96, y = 200;
             Rectangle r = new Rectangle(x - 34, 140, 68, 76);
             boolean over = hot(r) && anim == null;
-            Rectangle face = new Rectangle(x - 26, 142, 52, 54);
             if (over) {
                 g.setColor(new Color(255, 190, 110, 50));
-                g.fillRect(face.x - 4, face.y - 4, face.width + 8, face.height + 8);
+                g.fillRect(x - 28, 132, 56, 72);
             }
             boolean inHand = anim != null && anim.card == c && now() - anim.start > 0.6 && !anim.caught;
-            if (!inHand) cardTile(g, face, cut(c.getName(), 14), rarity(c), "", over, false);
+            if (!inHand) {
+                g.setColor(new Color(10, 6, 8, 90));
+                g.fillRect(x - 22, 140, 48, 64);                                  // its shadow on the wood
+                g.drawImage(CardArt.card(c, 48, 64), x - 24, 136, null);
+            }
             tag(g, x, 202, price + "g", shop().getGold() < price);
             if (over) info = c.getName() + " (" + c.getRarity() + (c.isGlobal() ? ", global" : "") + "): " + c.getDescription();
             hits.add(new Hit(r, () -> offer(null, c, false, x, y, price)));
@@ -1635,7 +1657,12 @@ public class PixelGame extends JPanel {
             Card c = draft.get(i);
             Rectangle r = new Rectangle(x0 + i * (w + gap), 66, w, 146);
             boolean over = hot(r);
-            cardTile(g, r, c.getName(), c.getDescription(), rarity(c), c.getRarity().toString(), over, false);
+            if (over) {
+                g.setColor(new Color(255, 190, 110, 60));
+                g.fillRect(r.x + (w - 96) / 2 - 4, r.y - 4, 104, 136);
+            }
+            g.drawImage(CardArt.card(c, 96, 128), r.x + (w - 96) / 2, r.y, null);
+            Px.centred(g, cut(c.getName(), 21), r.x + w / 2, r.y + 134, over ? Px.EMBER : Px.CREAM, 1);
             if (over) info = c.getName() + ": " + c.getDescription();
             hits.add(new Hit(r, () -> { deal(shop().draftMysteryCard(c), "You keep " + c.getName() + "."); setMode(Mode.SHOP, 2); }));
         }
