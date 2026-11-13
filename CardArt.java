@@ -139,10 +139,19 @@ public final class CardArt {
                 part(img, r, s, new Rectangle2D.Double(x - w * 0.42, y - h * 0.92, w * 0.84, h * 0.3), col, 1);
                 for (int i = 0; i < 3; i++) part(img, r, s, new Rectangle2D.Double(x - w * 0.42 + i * w * 0.32, y - h * 1.0, w * 0.2, h * 0.1), col, 0.5);
                 break;
-            case 'B':
-                part(img, r, s, new Ellipse2D.Double(x - w * 0.34, y - h * 0.98, w * 0.68, h * 0.42), col, 1.5);
-                line(img, r, s, x + w * 0.05, y - h * 0.9, x + w * 0.18, y - h * 0.74, 0.7f, INK);
+            case 'B': {                                                      // a mitre with its slit, a ball, a collar
+                Path2D m = new Path2D.Double();
+                m.moveTo(x, y - h * 1.0);
+                m.curveTo(x + w * 0.5, y - h * 0.9, x + w * 0.45, y - h * 0.66, x + w * 0.3, y - h * 0.6);
+                m.lineTo(x - w * 0.3, y - h * 0.6);
+                m.curveTo(x - w * 0.45, y - h * 0.66, x - w * 0.5, y - h * 0.9, x, y - h * 1.0);
+                m.closePath();
+                part(img, r, s, m, col, 1.5);
+                part(img, r, s, new Ellipse2D.Double(x - w * 0.1, y - h * 1.1, w * 0.2, h * 0.1), col, 0.5);
+                part(img, r, s, new RoundRectangle2D.Double(x - w * 0.36, y - h * 0.62, w * 0.72, h * 0.07, 1, 1), col, 0.5);
+                line(img, r, s, x + w * 0.22, y - h * 0.9, x - w * 0.02, y - h * 0.72, 0.7f, INK);
                 break;
+            }
             case 'N': {                                                      // a horse's head, facing left
                 Path2D p = new Path2D.Double();
                 p.moveTo(x + w * 0.4, y - h * 0.36);

@@ -134,52 +134,80 @@ public final class PixelArt {
         Color[] robe = Shade.ramp(who.robe, 5), robeDark = Shade.ramp(who.robe.darker(), 5);
         if (who.hood) {                                                 // a peaked hood, its opening deep in shadow
             Path2D hood = new Path2D.Double();
-            hood.moveTo(44 + hx, 90 + hy);
-            hood.curveTo(40 + hx, 50 + hy, 52 + hx, 14 + hy, 75 + hx, 2 + hy);
-            hood.curveTo(98 + hx, 14 + hy, 110 + hx, 50 + hy, 106 + hx, 90 + hy);
+            hood.moveTo(46 + hx, 88 + hy);
+            hood.curveTo(42 + hx, 50 + hy, 53 + hx, 14 + hy, 75 + hx, 3 + hy);
+            hood.curveTo(97 + hx, 14 + hy, 108 + hx, 50 + hy, 104 + hx, 88 + hy);
             hood.closePath();
             Shade.part(img, hood, Shade.ramp(who.robe.darker(), 5), 7);
             Shade.part(img, new Ellipse2D.Double(48 + hx, 14 + hy, 54, 72), Shade.ramp(new Color(30, 20, 32), 3), 0, false, 0.6);
         }
-        robe(img, robe, robeDark, sx, by);
+        robe(img, robe, robeDark, sx, by, who.standing);
         head(img, who, hx, hy, t);
         if (who.standing) {                                             // arms folded across the chest
-            Color[] hand = who.gloves ? GLOVE : SKIN;
-            Shade.stroke(img, new Line2D.Double(44 + sx, 114 + by, 96 + sx, 101 + by), 11, robeDark);   // right arm under
-            Shade.part(img, new Ellipse2D.Double(92 + sx, 95 + by, 11, 10), hand, 3);
-            Shade.stroke(img, new Line2D.Double(106 + sx, 114 + by, 54 + sx, 101 + by), 11, robe);      // left arm over
-            Shade.part(img, new Ellipse2D.Double(47 + sx, 95 + by, 11, 10), hand, 3);
+            Color[] hand = who.gloves ? GLOVE : SKIN;                        // hands tucked at the elbows
+            Shade.part(img, new Ellipse2D.Double(75 + sx - 32, 99 + by, 10, 9), hand, 3);
+            Shade.part(img, new Ellipse2D.Double(75 + sx + 22, 101 + by, 10, 9), hand, 3);
         } else {
             hands(img, who, sx, by);
         }
         return img;
     }
 
-    private static void robe(BufferedImage img, Color[] robe, Color[] dark, int sx, int by) {
-        Path2D body = new Path2D.Double();
-        body.moveTo(20 + sx, 140);                                      // lean, sloping shoulders
-        body.curveTo(22 + sx, 112, 30 + sx, 90 + by, 46 + sx, 79 + by);
-        body.curveTo(56 + sx, 73 + by, 94 + sx, 73 + by, 104 + sx, 79 + by);
-        body.curveTo(120 + sx, 90 + by, 128 + sx, 112, 130 + sx, 140);
-        body.closePath();
-        Shade.part(img, body, robe, 6);
-        Shade.part(img, new Polygon(new int[]{60 + sx, 90 + sx, 75 + sx}, new int[]{70 + by, 70 + by, 112 + by}, 3), dark, 4);
-        for (int[] f : new int[][]{{40, 98, 34, 138}, {58, 92, 55, 138}, {92, 92, 95, 138}, {110, 98, 116, 138}}) {
+    /**
+     * The body, built like a person: a neck, shoulders sloping to round caps, a torso narrowing to the
+     * waist, and each arm as its own limb (upper arm to the elbow, forearm in to the hand), with a dark
+     * gap where arm meets body. Seated: hands on the table. Standing: arms folded across the chest.
+     */
+    private static void robe(BufferedImage img, Color[] robe, Color[] dark, int sx, int by, boolean standing) {
+        double c = 75 + sx;
+        Color[] shadow = Shade.ramp(Shade.mix(robe[1], new Color(10, 6, 14), 0.55), 3);
+        Path2D torso = new Path2D.Double();
+        torso.moveTo(c - 10, 77 + by);                                     // the neck
+        torso.lineTo(c + 10, 77 + by);
+        torso.curveTo(c + 20, 80 + by, c + 32, 84 + by, c + 40, 91 + by);  // the slope of the shoulder
+        torso.curveTo(c + 38, 104 + by, c + 33, 118, c + 31, 140);         // down the side to the waist
+        torso.lineTo(c - 31, 140);
+        torso.curveTo(c - 33, 118, c - 38, 104 + by, c - 40, 91 + by);
+        torso.curveTo(c - 32, 84 + by, c - 20, 80 + by, c - 10, 77 + by);
+        torso.closePath();
+        Shade.part(img, torso, robe, 3);
+        Area right = new Area(torso);                                      // the side away from the lamp, a step darker
+        right.intersect(new Area(new Rectangle((int) c + 6, 70 + by, 60, 80)));
+        Shade.part(img, right, Shade.ramp(robe[1], 5), 2);
+        Shade.part(img, new Polygon(new int[]{(int) c - 9, (int) c + 9, (int) c}, new int[]{76 + by, 76 + by, 100 + by}, 3), dark, 2);   // the collar's V
+        for (int side = -1; side <= 1; side += 2) {                        // folds of cloth under the chest
             Path2D fold = new Path2D.Double();
-            fold.moveTo(f[0] + sx, f[1] + by);
-            fold.quadTo((f[0] + f[2]) / 2.0 + sx + 3, (f[1] + f[3]) / 2.0, f[2] + sx, f[3]);
-            Shade.stroke(img, fold, 2.5f, dark);
+            fold.moveTo(c + side * 12, 102 + by);
+            fold.quadTo(c + side * 15, 120, c + side * 13, 140);
+            Shade.stroke(img, fold, 1.4f, shadow);
         }
-        // Sleeves down to the table.
         for (int side = -1; side <= 1; side += 2) {
-            double c = 75 + sx;
-            Path2D sleeve = new Path2D.Double();
-            sleeve.moveTo(c + side * 34, 82 + by);
-            sleeve.curveTo(c + side * 45, 96 + by, c + side * 44, 118, c + side * 36, 134);
-            sleeve.lineTo(c + side * 19, 132);
-            sleeve.curveTo(c + side * 24, 116, c + side * 27, 98 + by, c + side * 25, 86 + by);
-            sleeve.closePath();
-            Shade.part(img, sleeve, dark, 6);
+            double ey = (standing ? 114 : 124) + by;                       // elbows low, beside the waist
+            Path2D upper = new Path2D.Double();                            // the sleeve grows out of the shoulder line, wide at the top
+            upper.moveTo(c + side * 30, 84 + by);
+            upper.curveTo(c + side * 38, 85 + by, c + side * 43, 89 + by, c + side * 44, 96 + by);
+            upper.curveTo(c + side * 46, 106 + by, c + side * 46, ey - 6, c + side * 45, ey);
+            upper.lineTo(c + side * 33, ey + 1);
+            upper.curveTo(c + side * 32, ey - 10, c + side * 31, 104 + by, c + side * 31, 98 + by);
+            upper.closePath();
+            Shade.part(img, upper, dark, 3);
+            Shade.stroke(img, new Line2D.Double(c + side * 31, 99 + by, c + side * 33, ey), 1.5f, shadow);   // where the arm meets the body
+            Shade.stroke(img, new Line2D.Double(c + side * 37, ey - 2, c + side * 44, ey - 4), 1.2f, shadow);  // a crease at the elbow
+            if (!standing) {                                               // the forearm, foreshortened, coming forward to the table
+                Path2D fore = new Path2D.Double();
+                fore.moveTo(c + side * 45, ey - 1);
+                fore.lineTo(c + side * 38, 133);
+                fore.lineTo(c + side * 23, 133);
+                fore.lineTo(c + side * 33, ey);
+                fore.closePath();
+                Shade.part(img, fore, Shade.ramp(dark[1], 4), 2);
+                Shade.stroke(img, new Line2D.Double(c + side * 24, 130, c + side * 38, 130), 2.5f, shadow);   // the cuff
+            }
+        }
+        if (standing) {                                                    // forearms folded across the chest, one over the other
+            Shade.stroke(img, new Line2D.Double(c + 39, 114 + by, c - 24, 104 + by), 10, Shade.ramp(dark[1], 4));
+            Shade.stroke(img, new Line2D.Double(c - 39, 114 + by, c + 24, 106 + by), 10, dark);
+            Shade.stroke(img, new Line2D.Double(c - 20, 111 + by, c + 20, 112 + by), 1.2f, shadow);
         }
     }
 
@@ -188,7 +216,7 @@ public final class PixelArt {
         Color crease = who.gloves ? new Color(20, 16, 20) : new Color(128, 84, 72);
         int[] len = {10, 12, 11, 8};
         for (int side = -1; side <= 1; side += 2) {
-            double cx = 75 + sx + side * 27;
+            double cx = 75 + sx + side * 30;
             Shade.part(img, new RoundRectangle2D.Double(cx - 12, 122, 24, 10, 6, 6), skin, 3);      // the back of the hand
             for (int f = 0; f < 4; f++) {                                                        // fingers resting on the wood
                 int k = side < 0 ? 3 - f : f;
@@ -722,7 +750,7 @@ public final class PixelArt {
         BufferedImage img = new BufferedImage(18, 28, BufferedImage.TYPE_INT_ARGB);
         int base = 27;
         Shade.part(img, new Ellipse2D.Double(2, base - 5, 14, 5), wood, 2, true, 0.2);                 // foot
-        int top = kind == 'K' ? 2 : kind == 'Q' ? 4 : kind == 'B' ? 7 : kind == 'N' ? 7 : kind == 'R' ? 9 : 13;
+        int top = kind == 'K' ? 2 : kind == 'Q' ? 4 : kind == 'B' ? 5 : kind == 'N' ? 7 : kind == 'R' ? 9 : 13;
         Shade.part(img, new RoundRectangle2D.Double(6, top + 6, 6, base - top - 9, 4, 4), wood, 3, true, 0.2);   // stem
         switch (kind) {
             case 'K':
@@ -737,9 +765,18 @@ public final class PixelArt {
             case 'R':
                 Shade.part(img, new Rectangle2D.Double(4, top, 10, 8), wood, 3, true, 0.2);
                 break;
-            case 'B':
-                Shade.part(img, new Ellipse2D.Double(5, top, 8, 11), wood, 4, true, 0.2);
+            case 'B': {
+                Path2D mitre = new Path2D.Double();                        // the mitre: a pointed oval
+                mitre.moveTo(9, top + 1);
+                mitre.curveTo(13.5, top + 4, 14, top + 9, 12, top + 12);
+                mitre.lineTo(6, top + 12);
+                mitre.curveTo(4, top + 9, 4.5, top + 4, 9, top + 1);
+                mitre.closePath();
+                Shade.part(img, mitre, wood, 3, true, 0.2);
+                Shade.part(img, new Ellipse2D.Double(7.5, top - 2, 3, 3), wood, 1, true, 0.2);       // the ball on top
+                Shade.part(img, new RoundRectangle2D.Double(4.5, top + 12, 9, 3, 2, 2), wood, 1, true, 0.2);   // the collar
                 break;
+            }
             case 'N':
                 Path2D horse = new Path2D.Double();                        // a horse's head facing left: mane, ear, long nose
                 horse.moveTo(13, top + 14);
@@ -760,7 +797,12 @@ public final class PixelArt {
                 break;
         }
         if (kind == 'R') for (int i = 0; i < 3; i++) Shade.rect(img, 5 + i * 3, top, 2, 2, new Color(0, 0, 0, 0));
-        if (kind == 'B') Shade.rect(img, 9, top + 3, 1, 3, wood[0]);
+        if (kind == 'B') {                                                 // the slit cut across the mitre
+            Shade.px(img, 11, top + 4, wood[0]);
+            Shade.px(img, 10, top + 5, wood[0]);
+            Shade.px(img, 9, top + 6, wood[0]);
+            Shade.px(img, 8, top + 7, wood[0]);
+        }
         if (kind == 'N') {
             Shade.px(img, 6, top + 4, wood[0]);                             // the eye
             Shade.px(img, 2, top + 8, wood[0]);                             // a nostril
