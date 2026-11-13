@@ -10,9 +10,10 @@ import java.util.Random;
 /**
  * The opening scene, timed to the "opening" song in Music (96 beats a minute; one footstep a beat):
  *
- *   beats   0-16   seen from the same distance as the walk: the guard smokes under a torn awning at the
- *                  start of the skywalk; the lighter sparks and catches, the ember glows on each drag, smoke
- *                  drifts off; he drops the butt and grinds it out.
+ *   beats   0-16   seen from the same distance as the walk: under a torn awning in hard rain, the guard
+ *                  tries to light a cigarette. Two misses, a light the rain hisses out, two weak sparks, a
+ *                  flame the rain kills. He lowers the lighter, his head drops, his shoulders shake. He snaps
+ *                  it shut, drops the soaked cigarette, grinds it out, wipes his face and walks.
  *   beats  16-100  he walks out from under the awning and across a skywalk
  *                  through an overcrowded, rotting megacity (towers in haze, a shaft of light from above,
  *                  traffic, neon, beggars, rubbish heaps, fires in drums, rats, graffiti, a propaganda
@@ -264,10 +265,12 @@ public final class Opening {
         }
         skywalk(g, b, t, cam);
         foreground(g, b, t, cam);
-        for (int i = 0; i < 90; i++) {                                                 // a filthy drizzle
+        int drops = b < 16 ? 220 : 90;                                                 // hard rain at first, then a filthy drizzle
+        for (int i = 0; i < drops; i++) {                                              // rain
             int x = Math.floorMod((int) (hash(i, 31) % (W + 60) - t * 40 - (i % 3) * 9), W + 60) - 30;
             int y = (int) ((hash(i, 32) % H + t * (180 + i % 5 * 30)) % H);
-            for (int k = 0; k < 5; k++) Px.dot(g, x - k / 2, y + k, new Color(170, 176, 160, 50));
+            int len = b < 16 ? 10 : 5;
+            for (int k = 0; k < len; k++) Px.dot(g, x - k / 3, y + k, new Color(170, 176, 160, b < 16 ? 100 : 50));
         }
     }
 
@@ -598,13 +601,15 @@ public final class Opening {
             g.drawImage(s, x + s.getWidth(), FLOOR - 4 - 88, -s.getWidth(), s.getHeight(), null);
         }
         if (b < 99.9) {
-            boolean handUp = (b > 1.6 && b < 5.4) || (b > 5.8 && b < 6.9) || (b > 8.8 && b < 9.9);
-            int stage = b < 16 ? (handUp ? 4 : 0) : b < 97 ? 0 : b < 97.4 ? 1 : b < 97.8 ? 2 : 3;
+            boolean handUp = (b > 1.6 && b < 4.9) || (b > 5.6 && b < 8.5) || (b > 14.6 && b < 15.3);    // lighting it; wiping his face
+            boolean bowed = b > 8.6 && b < 12.4;                                               // the head drops
+            int stage = b < 16 ? (handUp ? 4 : bowed ? 5 : 0) : b < 97 ? 0 : b < 97.4 ? 1 : b < 97.8 ? 2 : 3;
             boolean walking = (b >= 16.5 && b <= 95.5) || b > 99;
             double p = ((b - 17) / 2 + 0.25) % 1;
             if (p < 0) p += 1;
             int frame = walking ? (int) (p * 12) % 12 : b > 13.5 && b < 14.4 ? 2 : -1;   // a foot lifted to grind the butt out
-            g.drawImage(walker(frame, stage), (int) walkerX(b) - cam - 21, FLOOR - 88, null);
+            int shake = b > 8.8 && b < 12.4 && near(b, SOBS, 0.3) && Math.sin(t * 36) > 0 ? 1 : 0;   // his shoulders shake
+            g.drawImage(walker(frame, stage), (int) walkerX(b) - cam - 21, FLOOR - 88 + shake, null);
             if (b < 16) smoking(g, b, t, cam);
         }
         // front rail and glass, in front of everything on the walkway
@@ -623,58 +628,60 @@ public final class Opening {
         }
     }
 
-    /** The cigarette, small in the wide view: sparks, a flame, the ember on each drag, smoke, the drop. */
+    /** The cigarette that won't stay lit, small in the wide view: sparks, a flame the rain puts out, steam. */
     private static void smoking(Graphics2D g, double b, double t, int cam) {
         int mx = (int) walkerX(b) - cam + 11, my = FLOOR - 75;
-        boolean flame = b > 3.2 && b < 5;
-        double drag = Math.max(Math.exp(-Math.pow((b - 6.4) / 0.4, 2)), Math.exp(-Math.pow((b - 9.4) / 0.4, 2)));
-        if ((b > 2 && b < 2.15) || (b > 3 && b < 3.2)) {
-            for (int k = 0; k < 6; k++) Px.dot(g, mx + 2 + hash(k, (int) (b * 30)) % 7 - 3, my + 2 - hash(k, 4) % 6, new Color(255, 230, 140));
-            g.setColor(new Color(255, 200, 120, 40));
-            g.fillOval(mx - 12, my - 12, 26, 26);
+        for (int i = 0; i < FLICKS.length; i++) {
+            double f = FLICKS[i];
+            if (b > f && b < f + 0.15) {
+                boolean weak = i == 3 || i == 4;                                       // a wet wheel
+                for (int k = 0; k < (weak ? 2 : 6); k++) Px.dot(g, mx + 2 + hash(k, (int) (b * 30)) % 7 - 3, my + 2 - hash(k, 4) % 6, new Color(255, 230, 140));
+                g.setColor(new Color(255, 200, 120, weak ? 16 : 40));
+                g.fillOval(mx - 12, my - 12, 26, 26);
+            }
         }
-        if (flame) {
-            g.setColor(new Color(255, 160, 80, 34 + (int) (8 * Math.sin(t * 30))));
+        boolean flame1 = b > 3.75 && b < 4.6, flame2 = b > 7.65 && b < 8.3 && Math.sin(t * 50) > -0.5;   // the second gutters
+        if (flame1 || flame2) {
+            double k = flame2 ? 0.6 : 1;
+            g.setColor(new Color(255, 160, 80, (int) ((34 + 8 * Math.sin(t * 30)) * k)));
             g.fillOval(mx - 34, my - 30, 70, 64);
-            g.setColor(new Color(255, 170, 90, 50));
+            g.setColor(new Color(255, 170, 90, (int) (50 * k)));
             g.fillOval(mx - 12, my - 10, 26, 24);
             Px.rect(g, mx + 2, my - 2, 1, 3, new Color(255, 240, 180));
             Px.rect(g, mx + 1, my, 3, 1, new Color(250, 140, 50));
         }
-        if (b > 2 && b < 12) {
-            Px.rect(g, mx, my + 1, 4, 1, new Color(210, 202, 186));
-            if (b > 3.6) {
-                Color ember = Shade.mix(new Color(140, 40, 24), new Color(255, 150, 60), 0.3 + 0.7 * drag);
-                Px.dot(g, mx + 4, my + 1, ember);
-                g.setColor(new Color(255, 120, 50, (int) (16 + 40 * drag)));
+        boolean inMouth = b > 2 && b < 12.5;
+        int droop = b > 8.6 ? 2 : 0;                                                       // it hangs from his lip
+        if (inMouth) {
+            Px.rect(g, mx, my + 1 + droop / 2, 2, 1, new Color(196, 188, 170));
+            Px.rect(g, mx + 2, my + 1 + droop, 2, 1, new Color(170, 164, 150));
+            if (b > 4.0 && b < 5.0) {                                                      // lit, for one breath
+                Px.dot(g, mx + 4, my + 1 + droop, new Color(255, 140, 60));
+                g.setColor(new Color(255, 120, 50, 40));
                 g.fillOval(mx - 2, my - 5, 12, 12);
             }
         }
-        for (double out : new double[]{7.2, 10.2}) {                                   // smoke, breathed out and drifting off
-            double age = b - out;
-            if (age < 0 || age > 4) continue;
-            for (int k = 0; k < 16; k++) {
-                double ka = age - k * 0.08;
-                if (ka < 0) continue;
-                int x = mx + 5 + (int) (ka * 9 + Math.sin(ka * 2 + k) * 2), y = my - (int) (ka * 7) + (int) (Math.sin(k * 1.7) * 2);
-                int r = 2 + (int) (ka * 2.6);
-                if ((hash(k, (int) (t * 4)) & 3) != 0 && age < 4 - k * 0.1) {
-                    g.setColor(new Color(180, 180, 188, (int) (150 * (1 - age / 4))));
-                    g.fillOval(x - r / 2, y - r / 3, r, Math.max(2, r * 2 / 3));
-                }
-            }
+        if (b > 5.0 && b < 6.2) {                                                          // the rain hits it: a puff of steam
+            double age = b - 5.0;
+            for (int k = 0; k < 6; k++) Px.dot(g, mx + 4 + k % 3 - 1 + (int) (age * 3), my - (int) (age * 8) - k, new Color(190, 190, 196, (int) (160 * (1 - age / 1.2))));
         }
-        if (b >= 12 && b < 13.6) {                                                     // dropped, glowing on the wet floor
-            double k = Math.min(1, (b - 12) / 0.8);
-            int x = mx + 4 + (int) (k * 6), y = (int) (my + 1 + (FLOOR - 2 - my - 1) * k * k);
-            Px.dot(g, x, y, new Color(255, 120, 50));
-            Px.dot(g, x - 1, y, new Color(210, 202, 186));
-            if (k >= 1) {
-                g.setColor(new Color(255, 120, 50, 40));
-                g.fillOval(x - 4, y - 2, 9, 4);
-                Px.dot(g, x + (int) (Math.sin(t * 4) * 1), y - 3 - (int) ((t * 6) % 4), new Color(150, 150, 156, 120));
-            }
+        if (b > 8.3 && b < 9.4) {                                                          // a thread of smoke off the dead wick
+            double age = b - 8.3;
+            for (int k = 0; k < 5; k++) Px.dot(g, mx + 2 + (int) (Math.sin(age * 5 + k) * 1.5), my - 3 - k * 2 - (int) (age * 6), new Color(170, 170, 178, (int) (120 * (1 - age / 1.1))));
         }
+        if (b >= 12.5 && b < 13.6) {                                                       // dropped, soaked
+            double k = Math.min(1, (b - 12.5) / 0.7);
+            int x = mx + 3 + (int) (k * 6), y = (int) (my + 2 + (FLOOR - 3 - my) * k * k);
+            Px.rect(g, x, y, 3, 1, new Color(180, 174, 160));
+        }
+    }
+
+    private static final double[] FLICKS = {2.0, 2.9, 3.7, 6.0, 6.8, 7.6};      // 3.7 and 7.6 catch
+    private static final double[] SOBS = {9.0, 9.7, 10.4, 11.3, 11.9};
+
+    private static boolean near(double b, double[] at, double w) {
+        for (double a : at) if (Math.abs(b - a) < w) return true;
+        return false;
     }
 
     private static final double[] PASSERS = {21, 26, 31, 35, 40, 44, 50, 55, 59, 64, 69, 74, 79, 84, 88, 92};
@@ -731,7 +738,7 @@ public final class Opening {
             new int[]{(int) sy - 2, (int) sy - 1, (int) sy + 8, (int) hipY + 16, (int) hipY + 16, (int) sy + 8, (int) sy}, 7);
         Shade.part(img, body, coat, 6);
         Shade.stroke(img, new Line2D.Double(13, hipY - 5, 30, hipY - 5), 1.2f, Shade.ramp(new Color(24, 22, 26), 2));   // belt
-        double hy = sy - 10;
+        double hy = sy - (stage == 5 ? 5 : 10);
         Path2D hood = new Path2D.Double();
         hood.moveTo(14, hy + 9);
         hood.curveTo(11, hy - 2, 16, hy - 9, 23, hy - 9);
@@ -746,7 +753,7 @@ public final class Opening {
             Shade.px(img, 32, (int) hy + 3, new Color(20, 14, 18));
             Shade.px(img, 31, (int) hy + 4, new Color(20, 14, 18));
         }
-        if ((stage == 0 || stage == 4) && !plain) {                                     // the mask hanging from his belt
+        if ((stage == 0 || stage == 4 || stage == 5) && !plain) {                                     // the mask hanging from his belt
             Shade.part(img, new Ellipse2D.Double(25, hipY - 4, 6, 8), Shade.ramp(new Color(232, 224, 212), 4), 2);
             Shade.px(img, 28, (int) hipY - 1, new Color(20, 14, 18));
             Shade.px(img, 29, (int) hipY + 2, new Color(140, 60, 60));
@@ -757,6 +764,7 @@ public final class Opening {
             double[] na = limb(hipX, sy, armNear, -0.35, 13, 12);
             Shade.stroke(img, path(hipX, sy, na[0], na[1], na[2], na[3]), 5.5f, coat);
             Shade.part(img, new Ellipse2D.Double(na[2] - 2.5, na[3] - 2, 5, 5), glove, 2);
+            if (stage == 5) Shade.rect(img, (int) na[2], (int) na[3] - 3, 2, 3, new Color(196, 160, 70));   // the lighter in his hand
         } else {
             Shade.stroke(img, path(hipX, sy, hipX + 6, sy + 12, hx, hyy), 5.5f, coat);
             if (stage != 4) Shade.part(img, new Ellipse2D.Double(25 + (stage == 2 ? 2 : 0), hyy - 6, 6, 12), Shade.ramp(new Color(232, 224, 212), 4), 2);

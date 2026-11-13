@@ -122,24 +122,30 @@ public final class Music {
 
     static {
         // ── The opening: a bathroom, the skywalk, the game room. His footsteps become the beat ──
-        //  0-16 a smoke break in the rain (lighter, drags, exhales, the butt dropped and ground out) / 16-96 the walk, one step a beat:
+        //  0-16 in hard rain he tries to light a cigarette and can't; he breaks down; grinds it out / 16-96 the walk, one step a beat:
         //  steps alone, then a kick under them (32), the table's bass and his keys (48), organ and
         //  music box (64), the melody (80) / 96 he stops at the door / 100-116 the room, heartbeat.
         Song op = new Song("opening", OPENING_BPM, OPENING_BEATS, false, 0, 0.12);
         op.normFrom = 80;
         op.normTo = 96;
         List<Note> ol = op.layer(0);
-        ol.add(new Note(Inst.RAIN, 0, 16, 1.7, 0));                         // a smoke break in the rain
-        ol.add(new Note("flick", 2.0, 1.7));                               // the lighter fails...
-        ol.add(new Note("flick", 3.0, 1.7));                               // ...and catches
-        ol.add(new Note("catch", 3.15, 1.7));
-        ol.add(new Note("clack", 5.0, 1.7));                               // the lid snaps shut
-        ol.add(new Note("drag", 6.0, 1.7));
-        ol.add(new Note("exhale", 7.2, 1.7));
-        ol.add(new Note("drag", 9.0, 1.7));
-        ol.add(new Note("exhale", 10.2, 1.7));
-        ol.add(new Note("sizzle", 12.8, 1.7));                             // dropped in a puddle
-        ol.add(new Note("grind", 13.6, 1.7));                              // ground out under a boot
+        ol.add(new Note(Inst.RAIN, 0, 8.4, 2.4, 0));
+        ol.add(new Note(Inst.RAIN, 8.0, 8, 1.5, 0));                        // easing while he cries                         // hard rain; he can't get it lit
+        ol.add(new Note("flick", 2.0, 1.7));                               // miss
+        ol.add(new Note("flick", 2.9, 1.7));                               // miss
+        ol.add(new Note("flick", 3.7, 1.7));                               // it catches
+        ol.add(new Note("catch", 3.75, 1.5));
+        ol.add(new Note("drag", 4.0, 1.2));                                // one breath of it
+        ol.add(new Note("sizzle", 5.0, 1.7));                              // and the rain puts it out
+        ol.add(new Note("flick", 6.0, 0.8));                               // a wet wheel, weak sparks
+        ol.add(new Note("flick", 6.8, 0.7));
+        ol.add(new Note("flick", 7.6, 1.5));
+        ol.add(new Note("catch", 7.65, 1.0));
+        ol.add(new Note("sizzle", 8.3, 1.0));                              // killed before it lights anything
+        for (double sb : new double[]{9.0, 9.7, 10.4, 11.3, 11.9}) ol.add(new Note("sob", sb, 3.6));   // he breaks down
+        ol.add(new Note("clack", 12.3, 1.7));                              // snaps the lighter shut
+        ol.add(new Note("grind", 13.6, 1.7));                              // grinds the wet cigarette out
+        ol.add(new Note("exhale", 14.7, 1.4));                             // a long breath, a sleeve across his face
         ol.add(new Note(Inst.RAIN, 15, 85, 0.35, 0));
         ol.add(new Note(Inst.CITY, 14, 90, 1.0, 0));
         for (int b = 17; b <= 95; b++) {
@@ -716,6 +722,18 @@ public final class Music {
                 }
                 break;
             }
+            case "sob": {                                                   // a breath that catches and shakes: crying, held in
+                n = (int) (RATE * 0.55);
+                for (int i = 0; i < n; i++) {
+                    double t = (double) i / RATE, noise = r.nextDouble() * 2 - 1;
+                    double env = Math.min(1, t / 0.04) * Math.exp(-t / 0.22);
+                    double shake = 0.55 + 0.45 * Math.signum(Math.sin(2 * Math.PI * 11 * t));      // the breath stutters
+                    double air = f.band(noise, 1300 - 500 * Math.min(1, t / 0.4), 0.5);
+                    double chest = Math.sin(2 * Math.PI * (150 - 30 * t) * t) * 0.12 * Math.exp(-t / 0.12);
+                    b[i] = (float) ((air * 0.4 * shake + chest) * env);
+                }
+                break;
+            }
             case "drag": {                                                  // drawing on the cigarette: breath and the paper crackling
                 n = (int) (RATE * 1.1);
                 for (int i = 0; i < n; i++) {
@@ -1149,7 +1167,7 @@ public final class Music {
             write(new java.io.File(dir, s.name + ".wav"), all);
             System.out.println(s.name + ": " + String.format("%.1f", all.length / (double) RATE) + " s, rendered in " + (System.currentTimeMillis() - t0) + " ms");
         }
-        for (String e : new String[]{"flick", "catch", "clack", "drag", "exhale", "sizzle", "grind", "latch", "door", "shut", "move", "capture", "check", "coin", "deny", "card", "step1", "step2", "step3", "drip", "creak", "chair", "hiss", "crack", "sparks"}) write(new java.io.File(dir, "sfx_" + e + ".wav"), makeSfx(e));
+        for (String e : new String[]{"flick", "catch", "clack", "drag", "exhale", "sizzle", "grind", "sob", "latch", "door", "shut", "move", "capture", "check", "coin", "deny", "card", "step1", "step2", "step3", "drip", "creak", "chair", "hiss", "crack", "sparks"}) write(new java.io.File(dir, "sfx_" + e + ".wav"), makeSfx(e));
     }
 
     private static void write(java.io.File f, float[] x) throws Exception {

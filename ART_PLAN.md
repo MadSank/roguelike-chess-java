@@ -93,6 +93,13 @@ neon, flying traffic) and asked for:
 
 ## Status
 (newest first)
+- 2026-11-13 (rain scene): from a One Piece reference the user gave (a man crying in the rain, failing to
+  light a cigarette) we kept the moment, not the character (no copying the anime design). Beats 0-16, wide
+  view: hard rain; flicks miss (2, 2.9), catch (3.7), one breath, the rain hisses it out (5); two weak wet
+  sparks (6, 6.8), a flame that gutters and dies (7.6-8.3); he lowers the lighter, head bowed (stage 5
+  walker frame), shoulders shaking on each sob (9, 9.7, 10.4, 11.3, 11.9; new "sob" sound); snaps it shut
+  (12.3), drops the soaked cigarette (12.5), grinds it out (13.6), sleeve across his face (14.6), walks.
+  `Opening.FLICKS` / `SOBS` and the notes in `Music` share these beats. Sobs measured about 7 dB over rain.
 - 2026-11-13 (wide smoke break): the user asked not to zoom in: the smoke break now plays in the same wide
   side view as the walk (the close-up code was removed). He stands under the awning at the start of the
   skywalk: hand up to light it (stage 4 walker frame), sparks and a flame glow, the ember brightening on
