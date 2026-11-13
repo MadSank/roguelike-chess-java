@@ -198,7 +198,7 @@ public class RunController {
      * @return false (and stays in the shop) if it doesn't
      */
     public boolean startRound() {
-        if (!shop.meetsRequirement(level)) {
+        if (!shop.meetsRequirement(level) && !shop.isEmbargoed()) {     // embargoed: dragged to the table as you are
             phase = Phase.SHOP;
             return false;
         }
@@ -326,6 +326,7 @@ public class RunController {
         hand.clear();
         played.clear();
 
+        shop.startVisit();                       // a new shop visit: suspicion cools, embargoes run down
         boolean gameOver = !shop.canStillReach(level);
         boolean madeBoard = false;
         if (gameOver) {

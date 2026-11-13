@@ -573,13 +573,13 @@ public class PixelGame extends JPanel {
         hits.add(new Hit(new Rectangle(BX, BY, SW * 8, SH * 8), () -> boardClick((lastClick.y - BY) / SH, (lastClick.x - BX) / SW)));
 
         // Left: the round.
-        Px.frame(g, 8, 160, 136, 146);
+        Px.frame(g, 8, 160, 116, 146);
         Px.text(g, "LEVEL " + run.getLevel(), 20, 172, Px.EMBER, 1);
         boolean yours = s.whiteToMove && !s.gameOver && !aiThinking;
         Px.text(g, s.gameOver ? "OVER" : yours ? "YOUR MOVE" : "HE THINKS", 20, 186, yours ? Px.CREAM : Px.ASH, 1);
         Px.text(g, "ACTIVE", 20, 204, Px.ASH, 1);
         List<Card> active = s.cardManager != null ? s.cardManager.getActiveCards() : new ArrayList<>();
-        for (int i = 0; i < active.size() && i < 6; i++) Px.text(g, cut(active.get(i).getName(), 18), 20, 216 + i * 10, Px.CREAM, 1);
+        for (int i = 0; i < active.size() && i < 6; i++) Px.text(g, cut(active.get(i).getName(), 16), 20, 216 + i * 10, Px.CREAM, 1);
         if (active.isEmpty()) Px.text(g, "nothing", 20, 216, Px.DIM, 1);
         Px.text(g, "Esc: give up", 20, 290, Px.DIM, 1);
 
@@ -587,18 +587,22 @@ public class PixelGame extends JPanel {
         hoverCard = null;
         Px.frame(g, 338, 160, 136, 146);
         Px.text(g, "HAND", 350, 172, Px.EMBER, 1);
+        Px.text(g, "burn to play", 386, 172, Px.DIM, 1);
         List<Card> hand = run.getHand();
-        boolean canPlay = yours && !roundEnding;
+        boolean canPlay = yours && !roundEnding && burnCard == null;
         if (hand.isEmpty()) Px.text(g, "empty", 350, 188, Px.DIM, 1);
         for (int i = 0; i < hand.size() && i < 9; i++) {
             Card c = hand.get(i);
             Rectangle r = new Rectangle(344, 184 + i * 13, 124, 12);
             boolean played = run.isPlayed(c), over = hot(r);
             if (over) hoverCard = c;
-            Color col = played ? new Color(120, 190, 120) : over && canPlay ? Px.EMBER : canPlay ? Px.CREAM : Px.ASH;
-            Px.text(g, cut(c.getName(), 19), 350, r.y + 2, col, 1);
-            if (!played && canPlay) hits.add(new Hit(r, () -> playCard(c)));
+            boolean held = c == heldCard || c == burnCard;
+            Color col = played ? new Color(120, 190, 120) : held ? Px.DIM : over && canPlay ? Px.EMBER : canPlay ? Px.CREAM : Px.ASH;
+            Px.text(g, cut(c.getName(), 19) + (played ? "" : ""), 350, r.y + 2, col, 1);
+            if (played) Px.rect(g, 350, r.y + 5, Math.min(114, Px.textWidth(cut(c.getName(), 19), 1)), 1, new Color(70, 60, 54));   // burnt: struck through
+            if (!played && canPlay) hits.add(new Hit(r, () -> pickUp(c)));
         }
+        candle(g, t);
 
         // Toasts rise over the board and fade.
         for (int i = 0; i < toasts.size(); i++) {
@@ -612,7 +616,16 @@ public class PixelGame extends JPanel {
         }
 
         status(g, run.getGold());
-        if (promotions != null) {
+        if (heldCard != null && burnCard == null) {                    // a card in your fingers: the candle takes it, anywhere else puts it back
+            hits.add(new Hit(new Rectangle(0, 0, Px.W, Px.H), () -> { heldCard = null; Music.sfx("grab"); }));
+            hits.add(new Hit(new Rectangle(CANDLE_X - 14, 236, 30, 72), () -> burn(heldCard)));
+            if (mouse.x >= 0) g.drawImage(cardSprite(heldCard), mouse.x - 12, mouse.y - 16, null);
+        }
+        if (heldCard != null && burnCard == null && promotions == null && snipeMove == null) {
+            Px.frame(g, 20, 312, 440, 44);
+            Px.plate(g, heldCard.getName(), 32, 306);
+            Px.wrap(g, heldCard.getDescription() + " Hold it over the candle to burn it.", 34, 324, 410, Px.CREAM, 999);
+        } else if (promotions != null) {
             choices(g, new String[]{"QUEEN", "ROOK", "BISHOP", "KNIGHT"}, new Runnable[]{
                 () -> promote("Q"), () -> promote("R"), () -> promote("B"), () -> promote("N")}, t);
         } else if (snipeMove != null) {
@@ -680,7 +693,7 @@ public class PixelGame extends JPanel {
     }
 
     private void clearSelection() {
-        if (mode != Mode.BOARD) slide = null;
+        if (mode != Mode.BOARD) { slide = null; heldCard = null; }
         selRow = selCol = -1;
         legal = new ArrayList<>();
         promotions = null;
@@ -736,6 +749,92 @@ public class PixelGame extends JPanel {
         playerMove(pick);
     }
 
+    // ─── Cards are played by burning them at the candle beside you ───
+    private static final int CANDLE_X = 135;
+    private Card heldCard, burnCard;
+    private double burnStart;
+    private static final double BURN = 1.3;
+
+    private void pickUp(Card c) {
+        heldCard = heldCard == c ? null : c;
+        Music.sfx("grab");
+    }
+
+    private void burn(Card c) {
+        if (c == null || burnCard != null || aiThinking || roundEnding) return;
+        burnCard = c;
+        heldCard = null;
+        burnStart = now();
+        Music.sfx("burn");
+        after((int) (BURN * 1000), () -> {
+            Card card = burnCard;
+            burnCard = null;
+            playCard(card);
+        });
+    }
+
+    /** A card the size of your fingers: rarity on its edge, its initial in the middle. */
+    private static final java.util.Map<String, BufferedImage> CARD_SPRITES = new java.util.HashMap<>();
+
+    private static BufferedImage cardSprite(Card c) {
+        return CARD_SPRITES.computeIfAbsent(c.getName(), k -> {
+            BufferedImage img = new BufferedImage(24, 32, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = Px.pen(img);
+            Px.rect(g, 0, 0, 24, 32, Px.BLACK);
+            Px.rect(g, 1, 1, 22, 30, new Color(214, 200, 168));
+            Px.rect(g, 2, 2, 20, 2, rarity(c));
+            Px.rect(g, 2, 28, 20, 2, rarity(c));
+            Px.centred(g, c.getName().substring(0, 1), 12, 10, Px.WOOD_DARK, 2);
+            for (int i = 0; i < 6; i++) Px.dot(g, 4 + (i * 7) % 16, 6 + (i * 11) % 22, new Color(180, 160, 128));   // foxing
+            g.dispose();
+            return img;
+        });
+    }
+
+    /** The candle beside you on the table, and the card burning over it. */
+    private void candle(Graphics2D g, double t) {
+        int x = CANDLE_X;
+        boolean burning = burnCard != null;
+        double k = burning ? Math.min(1, (now() - burnStart) / BURN) : 0;
+        g.setColor(new Color(255, 170, 80, burning ? 60 : 26));
+        g.fillOval(x - 26, 236, 54, 54);
+        Px.rect(g, x - 8, 300, 18, 4, new Color(150, 110, 52));                  // a brass dish
+        Px.rect(g, x - 8, 300, 18, 1, new Color(210, 170, 90));
+        Px.rect(g, x - 3, 272, 8, 28, new Color(222, 210, 182));                  // the candle, wax run down its side
+        Px.rect(g, x - 3, 272, 2, 28, new Color(240, 232, 210));
+        Px.rect(g, x + 3, 272, 2, 28, new Color(180, 166, 140));
+        Px.rect(g, x + 4, 276, 2, 9, new Color(232, 222, 196));
+        Px.rect(g, x, 268, 1, 4, new Color(40, 30, 26));
+        int fh = (burning ? 9 : 6) + (int) (Math.sin(t * 19) * 1.5);
+        for (int y = 0; y < fh; y++) {
+            int w = (int) ((burning ? 3 : 2) * Math.sin(Math.PI * (y + 1) / (fh + 1))) + 1;
+            Color c = y > fh * 0.6 ? new Color(255, 248, 210) : y > fh * 0.3 ? new Color(255, 196, 90) : new Color(236, 120, 40);
+            Px.rect(g, x - w / 2 + (int) (Math.sin(t * 13 + y) * 0.6), 268 - (fh - y), w, 1, c);
+        }
+        if (!burning) return;
+        // the card held in the flame, eaten from the bottom up
+        BufferedImage card = cardSprite(burnCard);
+        int cx = x - 12, cy = 226;
+        int line = (int) (32 * (1 - k));                                         // rows above this are still card
+        for (int yy = 0; yy < 32; yy++) {
+            for (int xx = 0; xx < 24; xx++) {
+                int edge = line + (hash(xx, (int) (t * 20)) % 3) - 1;
+                if (yy > edge) continue;
+                int argb = card.getRGB(xx, yy);
+                Color c = new Color(argb);
+                if (yy >= edge - 1) c = (hash(xx, yy + (int) (t * 30)) & 1) == 0 ? new Color(255, 200, 80) : new Color(240, 100, 30);
+                else if (yy >= edge - 4) c = Shade.mix(c, new Color(40, 24, 18), 0.7);   // scorched
+                Px.dot(g, cx + xx, cy + yy, c);
+            }
+        }
+        for (int i = 0; i < 10; i++) {                                           // ash falling, smoke rising
+            double a = (t * 1.3 + i * 0.1) % 1;
+            Px.dot(g, cx + hash(i, 1) % 24, cy + line + (int) (a * 40), new Color(110, 104, 98));
+            g.setColor(new Color(120, 116, 120, (int) (100 * (1 - a))));
+            g.fillOval(cx + 6 + hash(i, 2) % 12 + (int) (Math.sin(t * 3 + i) * 3), cy + line - 6 - (int) (a * 40), 4 + (int) (a * 6), 3 + (int) (a * 4));
+        }
+    }
+
     private void playCard(Card c) {
         if (aiThinking || roundEnding) return;
         String err = run.playCard(c);
@@ -743,8 +842,7 @@ public class PixelGame extends JPanel {
             toast(err);
             return;
         }
-        Music.sfx("card");
-        toast(c.getName() + " played");
+        toast(c.getName() + " burns");
         clearSelection();
         if (run.isRoundOver()) endRound();
     }
@@ -1086,13 +1184,21 @@ public class PixelGame extends JPanel {
         setMode(Mode.SHOP, 2);
         Music.later("chair", 0, 0.6);                                 // you get up and cross to the dealers
         Music.steps(3, 0.7, 0.45, 0.55, 0.7);
-        say(dealerPerson().name, Lines.dealerGreet(dealer), dealerPerson().voice);
+        greet();
     }
 
     private void turn(int step) {
+        if (anim != null) return;
         dealer = (dealer + step + 3) % 3;
         reaction = null;
-        say(dealerPerson().name, Lines.dealerGreet(dealer), dealerPerson().voice);
+        steal = null;
+        greet();
+    }
+
+    /** What the dealer you face says: a refusal while you are a known thief, a warning while prices are up. */
+    private void greet() {
+        String[] l = shop().isEmbargoed() ? Lines.refuse() : shop().hasMarkup() ? Lines.markup() : Lines.dealerGreet(dealer);
+        say(dealerPerson().name, l, dealerPerson().voice);
     }
 
     private void deal(ShopManager.Result r, String what) {
@@ -1109,14 +1215,16 @@ public class PixelGame extends JPanel {
     }
 
     private void sitDown() {
+        if (anim != null) return;
         int level = run.getLevel();
-        if (!shop().meetsRequirement(level)) {
+        if (!shop().meetsRequirement(level) && !shop().isEmbargoed()) {
             react("no", 1.0);
             int need = Economy.requirement(level) - shop().armyMaterial();
             say(dealerPerson().name, new String[]{"Level " + level + " needs " + Economy.requirement(level) + " material. You have "
                 + shop().armyMaterial() + ".", "Buy " + need + " more first."}, dealerPerson().voice);
             return;
         }
+        if (!shop().meetsRequirement(level)) toast("The guards drag you to the table as you are.");
         stash = new ArrayList<>(shop().getCards().getActiveCards());
         if (stash.isEmpty()) {
             if (run.finishShopping()) startRoundScreen();
@@ -1127,25 +1235,126 @@ public class PixelGame extends JPanel {
         setMode(Mode.HAND, 0);
     }
 
+    // ─── The counter: you see what you buy, pay with your own hand, and take it (or steal it) ───
+    /** A purchase, theft or sale in progress: your hand and the dealer's move across the counter. */
+    private static final class Deal {
+        final String kind;           // "buy", "steal", "sell"
+        final String piece;          // a piece type, or null
+        final Card card;             // a card, or null
+        final int x, y;              // where the item stands on the counter
+        final boolean caught, pack;
+        final double start;
+        final Runnable done;
+
+        Deal(String kind, String piece, Card card, int x, int y, boolean caught, boolean pack, double start, Runnable done) {
+            this.kind = kind;
+            this.piece = piece;
+            this.card = card;
+            this.x = x;
+            this.y = y;
+            this.caught = caught;
+            this.pack = pack;
+            this.start = start;
+            this.done = done;
+        }
+
+        double length() {
+            return kind.equals("buy") ? 1.45 : kind.equals("sell") ? 1.6 : caught ? 2.0 : 1.0;
+        }
+    }
+
+    private Deal anim;
+    /** An item you can't afford that you're thinking about taking anyway. */
+    private Object[] steal;           // {piece type or Card, x, y}
+
+    private static String pieceCode(String type) {
+        return "w" + (type.equals("Knight") ? "N" : type.substring(0, 1));
+    }
+
+    private static double ease(double a, double b, double x) {
+        double k = Math.max(0, Math.min(1, (x - a) / (b - a)));
+        return k * k * (3 - 2 * k);
+    }
+
+    private static final java.util.Map<String, BufferedImage> HANDS = new java.util.HashMap<>();
+
+    /** Your bare hand and ragged sleeve reaching up from below (open or closed), or the dealer's glove coming down. */
+    private static BufferedImage hand(boolean dealerHand, boolean open) {
+        return HANDS.computeIfAbsent(dealerHand + "," + open, k -> {
+            BufferedImage img = new BufferedImage(40, 130, BufferedImage.TYPE_INT_ARGB);
+            Color[] sleeve = Shade.ramp(dealerHand ? new Color(52, 46, 52) : new Color(88, 80, 70), 4);
+            Color[] skin = dealerHand ? Shade.ramp(new Color(40, 34, 38), 4) : Shade.ramp(new Color(196, 154, 126), 4);
+            if (dealerHand) {                                                   // from the top down, palm down
+                Shade.part(img, new java.awt.geom.RoundRectangle2D.Double(8, 0, 24, 100, 8, 8), sleeve, 5);
+                Shade.part(img, new java.awt.geom.RoundRectangle2D.Double(7, 96, 26, 18, 8, 8), skin, 3);
+                for (int f = 0; f < 4; f++) Shade.part(img, new java.awt.geom.RoundRectangle2D.Double(9 + f * 6, 108, 5, open ? 16 : 10, 3, 3), skin, 1.5);
+                Shade.part(img, new java.awt.geom.RoundRectangle2D.Double(30, 100, 6, 12, 3, 3), skin, 1.5);
+            } else {                                                            // from the bottom up, reaching
+                Shade.part(img, new java.awt.geom.RoundRectangle2D.Double(9, 30, 22, 100, 8, 8), sleeve, 5);
+                for (int i = 0; i < 5; i++) Shade.rect(img, 9 + i * 5, 30 + (i % 2) * 3, 3, 2, sleeve[0]);   // frayed cuff
+                Shade.part(img, new java.awt.geom.RoundRectangle2D.Double(9, 14, 22, 20, 8, 8), skin, 3);
+                if (open) for (int f = 0; f < 4; f++) Shade.part(img, new java.awt.geom.RoundRectangle2D.Double(10 + f * 5.2, 2 + Math.abs(f - 1.5) * 2, 4.5, 16, 3, 3), skin, 1.5);
+                else Shade.part(img, new java.awt.geom.RoundRectangle2D.Double(10, 8, 20, 10, 6, 6), skin, 2);
+                Shade.part(img, new java.awt.geom.RoundRectangle2D.Double(2, 18, 9, 6, 3, 3), skin, 1.5);   // thumb
+                Shade.rect(img, 12, 22, 16, 1, new Color(140, 96, 80));
+            }
+            return img;
+        });
+    }
+
+    private void coins(Graphics2D g, int x, int y, int n) {
+        for (int i = 0; i < n; i++) Px.coin(g, x + (i % 2) * 5 - 4, y - i * 2);
+    }
+
+    private void drawItem(Graphics2D g, String piece, Card card, boolean pack, int x, int y) {
+        if (piece != null) PixelArt.piece(g, pieceCode(piece), x, y);
+        else if (pack) {
+            Px.rect(g, x - 14, y - 20, 28, 20, new Color(70, 40, 90));
+            Px.rect(g, x - 14, y - 12, 28, 3, new Color(170, 120, 60));
+        } else if (card != null) g.drawImage(cardSprite(card), x - 12, y - 32, null);
+    }
+
+    /** A paper price tag on the counter. */
+    private void tag(Graphics2D g, int x, int y, String text, boolean dim) {
+        int w = Px.textWidth(text, 1) + 6;
+        Px.rect(g, x - w / 2, y, w, 10, dim ? new Color(120, 112, 96) : new Color(222, 210, 180));
+        Px.rect(g, x - w / 2, y, w, 1, new Color(250, 244, 226));
+        Px.text(g, text, x - w / 2 + 3, y + 2, shop().hasMarkup() ? Px.DRED : Px.WOOD_DARK, 1);
+    }
+
     private void drawShop(Graphics2D g, double t) {
+        int shake = anim != null && anim.caught && now() - anim.start > 0.7 && now() - anim.start < 1.0 ? (int) (Math.sin(t * 90) * 4) : 0;
+        g.translate(shake, 0);
         Px.cellar(g, 240, 70, 260, flicker(t));
         g.drawImage(figure(dealerPerson(), t), (Px.W - PixelArt.SPRITE_W) / 2, -8, null);
-        table(g, 30, 128, 420, 18);
-        Px.flame(g, 70, 116, t);
-        Px.flame(g, 404, 116, t + 0.3);
-        Px.frame(g, 20, 152, 440, 112);
-        Px.plate(g, dealer == 0 ? "Cards" : dealer == 1 ? "Pieces" : "Sell for half", 32, 146);
+        table(g, 14, 124, 452, 142);                                      // the counter, deep enough to lay things on
+        Px.flame(g, 40, 112, t);
+        Px.flame(g, 432, 112, t + 0.3);
         String info;
         if (dealer == 1) info = drawPieceWares(g);
         else if (dealer == 0) info = drawCardWares(g);
         else info = drawResale(g);
-        if (info != null) Px.wrap(g, info, 34, 240, 412, Px.ASH, 999);
+        if (shop().isEmbargoed()) info = "They won't deal with you: not this visit, not the next. You can still sit down; the guards will make you.";
+        else if (shop().hasMarkup()) info = info + " (Thief's prices, " + shop().markupVisitsLeft() + " more visit" + (shop().markupVisitsLeft() == 1 ? "" : "s") + ".)";
+        if (steal != null && anim == null) info = "You can't pay for that. Nobody is looking. Probably.";
+        Px.wrap(g, info, 30, 226, 420, Px.CREAM, 999);
+        drawDeal(g, t);
+        g.translate(-shake, 0);
         speechBox(g, 274, 44);
         status(g, shop().getGold());
-        boolean ready = shop().meetsRequirement(run.getLevel());
+        if (anim != null) {
+            hits.clear();
+            hits.add(new Hit(new Rectangle(0, 0, Px.W, Px.H), () -> { }));
+            return;
+        }
+        if (steal != null) {
+            choices(g, new String[]{"STEAL IT", "PUT BACK"}, new Runnable[]{this::stealIt, () -> steal = null}, t);
+            return;
+        }
+        boolean ready = shop().meetsRequirement(run.getLevel()) || shop().isEmbargoed();
         choices(g, new String[]{"<", "TALK", ready ? "SIT DOWN" : "NEED " + (run.getRequirement() - shop().armyMaterial()), "GIVE UP", ">"}, new Runnable[]{
             () -> turn(-1),
-            () -> say(dealerPerson().name, Lines.dealerTalk(dealer), dealerPerson().voice),
+            () -> say(dealerPerson().name, shop().isEmbargoed() ? Lines.refuse() : Lines.dealerTalk(dealer), dealerPerson().voice),
             this::sitDown,
             this::askGiveUp,
             () -> turn(1)}, t);
@@ -1161,25 +1370,151 @@ public class PixelGame extends JPanel {
         }
     }
 
-    /** Five pieces standing on the counter; click to buy. Returns the line about the one under the mouse. */
+    /** Hovering, then clicking an item: buy it if you can pay, otherwise think about stealing it. */
+    private void offer(String piece, Card card, boolean pack, int x, int y, int price) {
+        if (anim != null) return;
+        steal = null;
+        if (shop().isEmbargoed()) {
+            Music.sfx("deny");
+            react("no", 1.0);
+            say(dealerPerson().name, Lines.refuse(), dealerPerson().voice);
+            return;
+        }
+        if (shop().getGold() < price) {
+            if (pack) {
+                deal(ShopManager.Result.NOT_ENOUGH_GOLD, "");
+                return;
+            }
+            steal = new Object[]{piece != null ? piece : card, x, y};
+            choice = 1;
+            return;
+        }
+        ShopManager.Result r = piece != null ? shop().buyPiece(piece) : pack ? shop().openMysteryPack(run.getLevel()) : shop().buyFaceUpCard(card);
+        if (r != ShopManager.Result.OK) {
+            deal(r, "");
+            return;
+        }
+        String what = piece != null ? "You take the " + piece.toLowerCase() + "." : pack ? "You take the pack and tear it open." : "You take " + card.getName() + ".";
+        anim = new Deal("buy", piece, card, x, y, false, pack, now(), () -> {
+            deal(ShopManager.Result.OK, what);
+            if (pack) setMode(Mode.DRAFT, 3);
+        });
+        Music.later("coins", 0.35, 1);
+        Music.later("grab", 0.6, 1);
+    }
+
+    private void stealIt() {
+        if (steal == null || anim != null) return;
+        Object item = steal[0];
+        int x = (Integer) steal[1], y = (Integer) steal[2];
+        steal = null;
+        String piece = item instanceof String ? (String) item : null;
+        Card card = item instanceof Card ? (Card) item : null;
+        double roll = rng.nextDouble();
+        ShopManager.Result r = piece != null ? shop().stealPiece(piece, roll) : shop().stealCard(card, roll);
+        if (r != ShopManager.Result.OK && r != ShopManager.Result.CAUGHT) {
+            deal(r, "");
+            return;
+        }
+        boolean caught = r == ShopManager.Result.CAUGHT;
+        anim = new Deal("steal", piece, card, x, y, caught, false, now(), () -> {
+            if (caught) {
+                react("no", 1.4);
+                say(dealerPerson().name, Lines.thief(), dealerPerson().voice);
+            } else {
+                say(null, Lines.stole(), 200);
+            }
+        });
+        Music.later("grab", 0.6, 0.6);
+        if (caught) Music.later("slam", 0.68, 1);
+    }
+
+    private void sellIt(String piece, Card card) {
+        if (anim != null) return;
+        if (shop().isEmbargoed()) {
+            offer(null, null, false, 0, 0, 0);
+            return;
+        }
+        ShopManager.Result r = piece != null ? shop().sellPiece(piece) : shop().sellCard(card);
+        if (r != ShopManager.Result.OK) {
+            deal(r, "");
+            return;
+        }
+        String what = piece != null ? "He pockets the " + piece.toLowerCase() + " and pushes coins at you." : "He tucks " + card.getName() + " into his coat and pushes coins at you.";
+        anim = new Deal("sell", piece, card, 240, 200, false, false, now(), () -> deal(ShopManager.Result.OK, what));
+        Music.later("grab", 0.4, 1);
+        Music.later("coins", 0.75, 1);
+    }
+
+    /** The hands across the counter. Clears itself when the deal is done. */
+    private void drawDeal(Graphics2D g, double t) {
+        if (anim == null) return;
+        double k = now() - anim.start;
+        Deal d = anim;
+        int myX = d.x + 10, myY = 400, dX = d.x + 28, dY = -140;
+        boolean myOpen = true, carrying = false, coinsDown = false, dealerTakes = false;
+        String piece = d.piece;
+        Card card = d.card;
+        if (d.kind.equals("buy")) {
+            int coinX = d.x + 26;
+            if (k < 0.35) { myX = coinX; myY = (int) (400 - (400 - d.y - 6) * ease(0, 0.35, k)); }
+            else if (k < 0.6) { myX = (int) (coinX + (d.x - coinX) * ease(0.35, 0.6, k)); myY = d.y - 6; coinsDown = true; }
+            else { myX = d.x; myY = (int) (d.y - 6 + (400 - d.y) * ease(0.6, 1.0, k)); myOpen = false; carrying = true; coinsDown = k < 1.15; }
+            if (k > 0.85) { dX = coinX; dY = (int) (-140 + (d.y - 120 + 140) * (k < 1.15 ? ease(0.85, 1.1, k) : 1 - ease(1.15, 1.4, k))); dealerTakes = k > 1.15; }
+            if (coinsDown) coins(g, coinX, d.y + 2, 3);
+            if (dealerTakes && k < 1.4) coins(g, dX, dY + 112, 3);
+        } else if (d.kind.equals("steal")) {
+            if (k < 0.3) { myX = d.x + 14; myY = (int) (400 - (400 - d.y - 2) * ease(0, 0.3, k)); }
+            else if (k < 0.55) { myX = d.x + 14 + (int) (Math.sin(k * 60) * 1.5); myY = d.y - 2; }        // a moment's nerve
+            else if (k < 0.7) { myX = (int) (d.x + 14 - 14 * ease(0.55, 0.7, k)); myY = d.y - 6; }
+            else if (!d.caught) { myX = d.x; myY = (int) (d.y - 6 + (400 - d.y) * ease(0.7, 0.95, k)); myOpen = false; carrying = true; }
+            else if (k < 1.6) { myX = d.x; myY = d.y - 6; myOpen = false; }
+            else { myX = d.x; myY = (int) (d.y - 6 + (400 - d.y) * ease(1.6, 1.9, k)); }
+            if (d.caught && k > 0.6) {                                         // his glove comes down on yours
+                dX = d.x + 2;
+                dY = k < 0.7 ? (int) (-140 + (d.y - 116 + 140) * ease(0.6, 0.7, k)) : k < 1.6 ? d.y - 116 : (int) (d.y - 116 - 260 * ease(1.6, 1.9, k));
+            }
+            if (d.caught && k > 0.7 && k < 0.82) Px.rect(g, -10, 0, Px.W + 20, Px.H, new Color(200, 20, 20, 70));
+        } else {                                                              // selling: you set it down, he takes it, coins come back
+            if (k < 0.4) { myX = 230; myY = (int) (400 - (400 - d.y - 6) * ease(0, 0.4, k)); myOpen = false; carrying = true; }
+            else if (k < 0.75) { myX = 230; myY = (int) (d.y - 6 + (400 - d.y) * ease(0.45, 0.75, k)); }
+            else if (k < 1.35) { myX = 262; myY = (int) (400 - (400 - d.y - 6) * ease(1.0, 1.25, k)); }
+            else { myX = 262; myY = (int) (d.y - 6 + (400 - d.y) * ease(1.35, 1.6, k)); myOpen = false; }
+            if (k >= 0.4 && k < 0.75) drawItem(g, piece, card, false, 230, d.y);
+            if (k > 0.5 && k < 1.0) { dX = 232; dY = (int) (-140 + (d.y - 120 + 140) * (k < 0.75 ? ease(0.5, 0.72, k) : 1 - ease(0.75, 1.0, k))); }
+            if (k > 0.5 && k < 1.0 && k >= 0.75) drawItem(g, piece, card, false, dX + 18, dY + 128);
+            if (k > 0.75 && k < 1.35) coins(g, 262, d.y + 2, 3);
+        }
+        if (dY > -130) g.drawImage(hand(true, !(d.kind.equals("steal") && d.caught)), dX - 20, dY, null);
+        if (carrying) drawItem(g, piece, card, d.pack, myX, myY + 4);
+        g.drawImage(hand(false, myOpen), myX - 20, myY, null);
+        if (d.kind.equals("steal") && d.caught && k > 0.7 && k < 1.6) g.drawImage(hand(true, false), dX - 20, dY, null);   // his on top of yours
+        if (k >= d.length()) {
+            anim = null;
+            d.done.run();
+        }
+    }
+
+    /** Five pieces standing on felt along the counter, each with a price tag. */
     private String drawPieceWares(Graphics2D g) {
-        String info = "Click a piece to buy it. Pawns allowed: " + shop().count("Pawn") + " of " + shop().pawnCap() + ".";
+        String info = "Pawns allowed: " + shop().count("Pawn") + " of " + shop().pawnCap() + ". Click a piece to buy it.";
         for (int i = 0; i < Economy.PIECE_TYPES.length; i++) {
             String type = Economy.PIECE_TYPES[i];
-            int price = Economy.piecePrice(type);
-            Rectangle r = new Rectangle(34 + i * 84, 160, 76, 74);
-            boolean over = hot(r), afford = shop().getGold() >= price;
-            Px.rect(g, r.x, r.y, r.width, r.height, over ? new Color(60, 34, 26) : new Color(30, 22, 22));
+            int price = shop().piecePrice(type), x = 64 + i * 88, y = 196;
+            Rectangle r = new Rectangle(x - 30, 150, 60, 66);
+            boolean over = hot(r) && anim == null, afford = shop().getGold() >= price;
+            g.setColor(new Color(30, 54, 40));
+            g.fillOval(x - 16, y - 5, 32, 9);                                      // a felt mat
             if (over) {
-                Px.rect(g, r.x, r.y, r.width, 1, Px.EMBER);
-                Px.rect(g, r.x, r.y + r.height - 1, r.width, 1, Px.EMBER);
+                g.setColor(new Color(255, 190, 110, 50));
+                g.fillOval(x - 22, y - 34, 44, 44);
             }
-            PixelArt.piece(g, "w" + (type.equals("Knight") ? "N" : type.substring(0, 1)), r.x + 38, r.y + 34);
-            Px.centred(g, type, r.x + 38, r.y + 40, Px.CREAM, 1);
-            Px.centred(g, price + " gold", r.x + 38, r.y + 51, afford ? Px.YELLOW : Px.DIM, 1);
-            Px.centred(g, "own " + shop().count(type), r.x + 38, r.y + 62, Px.ASH, 1);
-            if (over) info = type + ": " + Economy.material(sample(type)) + " material for " + price + " gold.";
-            hits.add(new Hit(r, () -> deal(shop().buyPiece(type), "He sets a " + type.toLowerCase() + " in front of you.")));
+            boolean taken = anim != null && type.equals(anim.piece) && !anim.kind.equals("sell") && now() - anim.start > 0.6 && !anim.caught;
+            if (!taken || shop().count(type) > 0) PixelArt.piece(g, pieceCode(type), x, y);
+            if (i < 4 && !(taken)) PixelArt.piece(g, pieceCode(type), x + 11, y - 2);   // a second one behind it
+            tag(g, x, y + 6, price + "g", !afford);
+            if (over) info = type + ": " + Economy.material(sample(type)) + " material for " + price + " gold. You have " + shop().count(type) + "." + (afford ? "" : " You can't pay for it.");
+            hits.add(new Hit(r, () -> offer(type, null, false, x, y, price)));
         }
         return info;
     }
@@ -1207,55 +1542,82 @@ public class PixelGame extends JPanel {
         Px.text(g, price, r.x + 7, r.y + r.height - 13, dim ? Px.CHAR : Px.DRED, 1);
     }
 
+    /** The cards laid face up on the counter, and the mystery pack. */
     private String drawCardWares(Graphics2D g) {
-        String info = "Hover a card to read it, click to buy.";
-        List<Card> faceUp = shop().getFaceUpCards();
+        String info = "Hover a card to read it. Click to buy it.";
+        List<Card> faceUp = new ArrayList<>(shop().getFaceUpCards());
+        if (anim != null && anim.card != null && !anim.kind.equals("sell") && !faceUp.contains(anim.card) && now() - anim.start < 0.6) faceUp.add(Math.min(faceUp.size(), 0), anim.card);
         for (int i = 0; i < faceUp.size() && i < 3; i++) {
             Card c = faceUp.get(i);
-            int price = Economy.faceUpCardPrice(c);
-            Rectangle r = new Rectangle(34 + i * 104, 158, 96, 76);
-            boolean over = hot(r);
-            cardTile(g, r, c.getName(), rarity(c), price + " gold", over, shop().getGold() < price);
+            int price = shop().cardPrice(c), x = 70 + i * 96, y = 200;
+            Rectangle r = new Rectangle(x - 34, 140, 68, 76);
+            boolean over = hot(r) && anim == null;
+            Rectangle face = new Rectangle(x - 26, 142, 52, 54);
+            if (over) {
+                g.setColor(new Color(255, 190, 110, 50));
+                g.fillRect(face.x - 4, face.y - 4, face.width + 8, face.height + 8);
+            }
+            boolean inHand = anim != null && anim.card == c && now() - anim.start > 0.6 && !anim.caught;
+            if (!inHand) cardTile(g, face, cut(c.getName(), 14), rarity(c), "", over, false);
+            tag(g, x, 202, price + "g", shop().getGold() < price);
             if (over) info = c.getName() + " (" + c.getRarity() + (c.isGlobal() ? ", global" : "") + "): " + c.getDescription();
-            hits.add(new Hit(r, () -> deal(shop().buyFaceUpCard(c), "He slides " + c.getName() + " across the counter.")));
+            hits.add(new Hit(r, () -> offer(null, c, false, x, y, price)));
         }
-        int level = run.getLevel(), packPrice = Economy.mysteryPackPrice(level);
-        Rectangle r = new Rectangle(34 + 3 * 104, 158, 96, 76);
+        int level = run.getLevel(), packPrice = shop().packPrice(level), px = 400;
         boolean opened = shop().isMysteryPackOpened() || shop().getMysteryPackCards().isEmpty();
-        boolean over = hot(r);
-        cardTile(g, r, opened ? "Pack opened" : "Mystery pack", new Color(150, 90, 200), opened ? "" : packPrice + " gold", over && !opened, opened || shop().getGold() < packPrice);
-        if (over) info = "Mystery pack: three hidden cards; keep one of them.";
-        hits.add(new Hit(r, () -> {
-            ShopManager.Result res = shop().openMysteryPack(level);
-            deal(res, "He tears the pack open.");
-            if (res == ShopManager.Result.OK) setMode(Mode.DRAFT, 3);
-        }));
+        Rectangle r = new Rectangle(px - 34, 140, 68, 76);
+        boolean over = hot(r) && anim == null;
+        if (!opened) {
+            Px.rect(g, px - 22, 150, 44, 40, new Color(60, 34, 80));                // a sealed bundle in brown paper and string
+            Px.rect(g, px - 22, 150, 44, 2, new Color(110, 70, 140));
+            Px.rect(g, px - 2, 150, 3, 40, new Color(180, 140, 70));
+            Px.rect(g, px - 22, 168, 44, 3, new Color(180, 140, 70));
+            tag(g, px, 202, packPrice + "g", shop().getGold() < packPrice);
+        } else {
+            Px.text(g, "torn open", px - 26, 170, Px.DIM, 1);
+        }
+        if (over) info = "Mystery pack: three hidden cards; you keep one. It can't be stolen: the string is tied to his wrist.";
+        if (!opened) hits.add(new Hit(r, () -> offer(null, null, true, px, 196, packPrice)));
         return info;
     }
 
+    /** The reseller's side: what you own, laid out for him to look at. */
     private String drawResale(Graphics2D g) {
-        String info = "Everything sells for half. Click to sell.";
-        for (int i = 0; i < Economy.PIECE_TYPES.length; i++) {
-            String type = Economy.PIECE_TYPES[i];
-            int owned = shop().count(type), refund = Economy.sellPrice(Economy.piecePrice(type));
-            Rectangle r = new Rectangle(30, 160 + i * 12, 130, 11);
-            boolean over = hot(r) && owned > 0;
-            Px.text(g, type + " x" + owned, 34, r.y + 2, owned == 0 ? Px.DIM : over ? Px.EMBER : Px.CREAM, 1);
-            Px.text(g, "+" + refund, 156 - Px.textWidth("+" + refund, 1), r.y + 2, owned == 0 ? Px.DIM : Px.YELLOW, 1);
-            if (owned > 0) hits.add(new Hit(r, () -> deal(shop().sellPiece(type), "He pockets the " + type.toLowerCase() + ".")));
+        String info = "Set something down and he pays for it. Click to sell.";
+        int j = 0;
+        for (String type : Economy.PIECE_TYPES) {
+            int owned = shop().count(type);
+            if (owned == 0) continue;
+            int x = 44 + j * 44, y = 196, refund = shop().pieceRefund(type);
+            Rectangle r = new Rectangle(x - 20, 150, 40, 66);
+            boolean over = hot(r) && anim == null;
+            if (over) {
+                g.setColor(new Color(255, 190, 110, 50));
+                g.fillOval(x - 20, y - 34, 40, 44);
+            }
+            PixelArt.piece(g, pieceCode(type), x, y);
+            Px.text(g, "x" + owned, x + 8, y - 26, Px.CREAM, 1);
+            tag(g, x, y + 6, "+" + refund, false);
+            if (over) info = "Sell a " + type.toLowerCase() + " for " + refund + " gold.";
+            hits.add(new Hit(r, () -> sellIt(type, null)));
+            j++;
         }
+        if (j == 0) Px.text(g, "You own no pieces.", 30, 170, Px.DIM, 1);
         List<Card> owned = new ArrayList<>(shop().getCards().getActiveCards());
-        if (owned.isEmpty()) Px.text(g, "No cards to sell.", 178, 162, Px.DIM, 1);
-        for (int i = 0; i < owned.size() && i < 12; i++) {
+        if (owned.isEmpty()) Px.text(g, "No cards.", 290, 170, Px.DIM, 1);
+        for (int i = 0; i < owned.size() && i < 6; i++) {
             Card c = owned.get(i);
-            int x = 174 + (i / 6) * 140, y = 160 + (i % 6) * 12;
-            Rectangle r = new Rectangle(x, y, 134, 11);
-            boolean over = hot(r);
-            String price = "+" + Economy.cardSellPrice(c);
-            Px.text(g, cut(c.getName(), 16), x + 4, y + 2, over ? Px.EMBER : rarity(c), 1);
-            Px.text(g, price, x + 132 - Px.textWidth(price, 1), y + 2, Px.YELLOW, 1);
-            if (over) info = c.getName() + ": " + c.getDescription();
-            hits.add(new Hit(r, () -> deal(shop().sellCard(c), "He tucks " + c.getName() + " into his coat.")));
+            int x = 262 + i * 34, y = 196, refund = shop().cardRefund(c);
+            Rectangle r = new Rectangle(x - 15, 150, 30, 66);
+            boolean over = hot(r) && anim == null;
+            if (over) {
+                g.setColor(new Color(255, 190, 110, 50));
+                g.fillRect(x - 15, 158, 30, 40);
+            }
+            g.drawImage(cardSprite(c), x - 12, y - 32, null);
+            tag(g, x, y + 6, "+" + refund, false);
+            if (over) info = c.getName() + ": " + c.getDescription() + " Sells for " + refund + ".";
+            hits.add(new Hit(r, () -> sellIt(null, c)));
         }
         return info;
     }
@@ -1293,6 +1655,30 @@ public class PixelGame extends JPanel {
         switch (s) {
             case "menu": break;
             case "open": break;
+            case "held": case "burn": {
+                p.run.getShop().generateCardOfferings(1, new Random(3));
+                p.shop().setGold(99);
+                p.shop().buyFaceUpCard(p.shop().getFaceUpCards().get(0));
+                p.shop().buyFaceUpCard(p.shop().getFaceUpCards().get(0));
+                p.run.finishShopping();
+                p.startRoundScreen();
+                p.setMode(Mode.BOARD, 0);
+                Card c = p.run.getHand().get(0);
+                if (s.equals("held")) { p.heldCard = c; p.mouse = new Point(190, 270); }
+                else { p.burnCard = c; p.burnStart = p.now() - Double.parseDouble(args.length > 2 ? args[2] : "0.6"); }
+                break;
+            }
+            case "buyanim": case "slam": case "sellanim": case "stealask": {
+                p.run.getShop().generateCardOfferings(1, new Random(3));
+                p.shop().setGold(20);
+                p.enterShop();
+                double at = Double.parseDouble(args.length > 2 ? args[2] : "0.5");
+                if (s.equals("buyanim")) p.anim = new Deal("buy", "Knight", null, 152, 196, false, false, p.now() - at, () -> { });
+                if (s.equals("slam")) { p.anim = new Deal("steal", "Queen", null, 416, 196, true, false, p.now() - at, () -> { }); }
+                if (s.equals("sellanim")) { p.dealer = 2; p.anim = new Deal("sell", "Pawn", null, 240, 200, false, false, p.now() - at, () -> { }); }
+                if (s.equals("stealask")) { p.steal = new Object[]{"Queen", 416, 196}; p.mouse = new Point(416, 180); }
+                break;
+            }
             case "name": p.name.append("Madhu"); p.setMode(Mode.NAME, 0); p.say(PixelArt.GUARDS[0].name, new String[]{"The smiling guard leans down to you.", "Name. For the board."}, PixelArt.GUARDS[0].voice); break;
             case "face": p.startRoundScreen(); break;
             case "board": {

@@ -95,6 +95,30 @@ public final class Lines {
     };
 
     public static String[] dealerGreet(int d) { return pick(DEALER_GREET[d]); }
+
+    // ─── Thieves ────────────────────────────────────────────────
+    private static final String[][] THIEF = {
+        {"His glove slams your hand flat on the counter and stays there.", "THIEF! Everybody look! This one steals!"},
+        {"He pins your wrist to the wood. Every masked head in the room turns.", "THIEF! Remember this hand. All of you!"},
+        {"The counter jumps under his fist. Pieces fall over.", "A THIEF! At MY counter!"},
+    };
+    private static final String[][] REFUSE = {
+        {"He turns his back on you.", "Not to a thief."}, {"He doesn't look at the counter.", "Get your hands away from my things."},
+        {"He covers his wares with his arm.", "We remember your hands."},
+    };
+    private static final String[][] MARKUP = {
+        {"He moves the tags before you can read them.", "Prices went up. For thieves."},
+        {"He watches your hands, not your face.", "Pay first. Then you can touch."},
+    };
+    private static final String[][] STOLE = {
+        {"It's in your sleeve before you can think. Nobody saw. Your heart won't slow down.", ""},
+        {"Your hand closes on it and comes away. No one shouts. Not this time.", ""},
+    };
+
+    public static String[] thief() { return pick(THIEF); }
+    public static String[] refuse() { return pick(REFUSE); }
+    public static String[] markup() { return pick(MARKUP); }
+    public static String[] stole() { return pick(STOLE); }
     public static String[] dealerTalk(int d) { return pick(DEALER_TALK[d]); }
     public static String[] yes() { return pick(YES); }
     public static String[] no() { return pick(NO); }

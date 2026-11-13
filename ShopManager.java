@@ -13,7 +13,10 @@ public class ShopManager {
         NO_ROOM("No room: the back rank holds at most 7 pieces besides the King."),
         NOT_OWNED("You don't own one of those."),
         ALREADY_OPENED("You already opened a pack this visit."),
-        NOT_OFFERED("That card isn't on offer.");
+        NOT_OFFERED("That card isn't on offer."),
+        EMBARGO("Nobody here will deal with a thief."),
+        CAN_AFFORD("You can pay for that."),
+        CAUGHT("Caught stealing.");
 
         public final String message;
 
@@ -32,6 +35,16 @@ public class ShopManager {
     private List<Card> mysteryPack = new ArrayList<>();
     private boolean mysteryPackOpened;
 
+    // ─── THEFT ──────────────────────────────────────────────────
+    /** How much the dealers suspect you: +1 per theft, -0.5 for every visit since. Sets the chance of being caught. */
+    private double heat;
+    /** Visits (this one included) in which no dealer will deal with you, after being caught. */
+    private int embargo;
+    /** Visits left of worse deals once the embargo is over. */
+    private int markup;
+    /** Visits of worse deals that follow an embargo. */
+    public static final int MARKUP_VISITS = 3;
+
     public ShopManager() {
         resetForNewRun();
     }
@@ -46,6 +59,9 @@ public class ShopManager {
         faceUpCards = new ArrayList<>();
         mysteryPack = new ArrayList<>();
         mysteryPackOpened = false;
+        heat = 0;
+        embargo = 0;
+        markup = 0;
     }
 
     // ─── GOLD AND ARMY ──────────────────────────────────────────
@@ -101,26 +117,111 @@ public class ShopManager {
         return armyMaterial() >= Economy.requirement(level);
     }
 
-    // ─── BUYING AND SELLING PIECES ──────────────────────────────
+    // ─── THEFT, EMBARGO, WORSE DEALS ────────────────────────────
 
-    public Result buyPiece(String type) {
-        int price = Economy.piecePrice(type);
-        if (gold < price) return Result.NOT_ENOUGH_GOLD;
+    /** The chance of being caught on the next theft: 15%, +20 points per theft not yet cooled off, at most 85%. */
+    public double catchChance() {
+        return Math.min(0.85, 0.15 + 0.2 * heat);
+    }
+
+    /** True while the dealers refuse you (the visit you were caught in, and the next). */
+    public boolean isEmbargoed() { return embargo > 0; }
+
+    /** True while prices are worse after an embargo. */
+    public boolean hasMarkup() { return markup > 0; }
+
+    public int markupVisitsLeft() { return markup; }
+
+    /** A new shop visit begins (after a round): suspicion cools, an embargo runs down into worse deals. */
+    public void startVisit() {
+        heat = Math.max(0, heat - 0.5);
+        if (embargo > 0) {
+            embargo--;
+            if (embargo == 0) markup = MARKUP_VISITS;
+        } else if (markup > 0) {
+            markup--;
+        }
+    }
+
+    /** What something costs you now (half again during worse deals). */
+    public int price(int base) {
+        return markup > 0 ? (base * 3 + 1) / 2 : base;
+    }
+
+    /** What the reseller pays you now (a quarter less during worse deals). */
+    public int refund(int base) {
+        return markup > 0 ? base * 3 / 4 : base;
+    }
+
+    public int piecePrice(String type) { return price(Economy.piecePrice(type)); }
+
+    public int cardPrice(Card card) { return price(Economy.faceUpCardPrice(card)); }
+
+    public int packPrice(int level) { return price(Economy.mysteryPackPrice(level)); }
+
+    public int pieceRefund(String type) { return refund(Economy.sellPrice(Economy.piecePrice(type))); }
+
+    public int cardRefund(Card card) { return refund(Economy.cardSellPrice(card)); }
+
+    /** The piece could join the army (pawn limit, back-rank room). */
+    private Result roomFor(String type) {
         if (type.equals("Pawn")) {
             if (count("Pawn") >= pawnCap()) return Result.PAWN_CAP;
         } else if (nonPawnCount() >= Economy.MAX_NON_PAWNS) {
             return Result.NO_ROOM;
         }
+        return Result.OK;
+    }
+
+    /** One theft attempt: caught if roll (0..1) falls under the catch chance. Suspicion rises either way. */
+    private boolean caught(double roll) {
+        boolean caught = roll < catchChance();
+        heat += 1;
+        if (caught) embargo = 2;                 // the rest of this visit, and the next one
+        return caught;
+    }
+
+    /** Takes a piece without paying. Only when you can't afford it. roll: a random number 0..1. */
+    public Result stealPiece(String type, double roll) {
+        if (embargo > 0) return Result.EMBARGO;
+        if (gold >= piecePrice(type)) return Result.CAN_AFFORD;
+        Result room = roomFor(type);
+        if (room != Result.OK) return room;
+        if (caught(roll)) return Result.CAUGHT;
+        army.add(create(type));
+        return Result.OK;
+    }
+
+    /** Takes a face-up card without paying. Only when you can't afford it. */
+    public Result stealCard(Card card, double roll) {
+        if (embargo > 0) return Result.EMBARGO;
+        if (!faceUpCards.contains(card)) return Result.NOT_OFFERED;
+        if (gold >= cardPrice(card)) return Result.CAN_AFFORD;
+        if (caught(roll)) return Result.CAUGHT;
+        cards.addCard(card);
+        faceUpCards.remove(card);
+        return Result.OK;
+    }
+
+    // ─── BUYING AND SELLING PIECES ──────────────────────────────
+
+    public Result buyPiece(String type) {
+        if (embargo > 0) return Result.EMBARGO;
+        int price = piecePrice(type);
+        if (gold < price) return Result.NOT_ENOUGH_GOLD;
+        Result room = roomFor(type);
+        if (room != Result.OK) return room;
         gold -= price;
         army.add(create(type));
         return Result.OK;
     }
 
     public Result sellPiece(String type) {
+        if (embargo > 0) return Result.EMBARGO;
         for (Iterator<Piece> it = army.iterator(); it.hasNext(); ) {
             if (typeOf(it.next()).equals(type)) {
                 it.remove();
-                gold += Economy.sellPrice(Economy.piecePrice(type));
+                gold += pieceRefund(type);
                 return Result.OK;
             }
         }
@@ -149,8 +250,9 @@ public class ShopManager {
     public boolean isMysteryPackOpened() { return mysteryPackOpened; }
 
     public Result buyFaceUpCard(Card card) {
+        if (embargo > 0) return Result.EMBARGO;
         if (!faceUpCards.contains(card)) return Result.NOT_OFFERED;
-        int price = Economy.faceUpCardPrice(card);
+        int price = cardPrice(card);
         if (gold < price) return Result.NOT_ENOUGH_GOLD;
         gold -= price;
         cards.addCard(card);
@@ -162,7 +264,8 @@ public class ShopManager {
     public Result openMysteryPack(int level) {
         if (mysteryPackOpened) return Result.ALREADY_OPENED;
         if (mysteryPack.isEmpty()) return Result.NOT_OFFERED;
-        int price = Economy.mysteryPackPrice(level);
+        if (embargo > 0) return Result.EMBARGO;
+        int price = packPrice(level);
         if (gold < price) return Result.NOT_ENOUGH_GOLD;
         gold -= price;
         mysteryPackOpened = true;
@@ -177,8 +280,9 @@ public class ShopManager {
     }
 
     public Result sellCard(Card card) {
+        if (embargo > 0) return Result.EMBARGO;
         if (!cards.removeCard(card)) return Result.NOT_OWNED;
-        gold += Economy.cardSellPrice(card);
+        gold += cardRefund(card);
         return Result.OK;
     }
 
@@ -192,8 +296,9 @@ public class ShopManager {
     public boolean canStillReach(int level) {
         int needed = Economy.requirement(level) - armyMaterial();
         if (needed <= 0) return true;
+        if (embargo > 0) return true;            // nobody will sell to you, so the guards make you play as you are
         int budget = gold;
-        for (Card c : cards.getActiveCards()) budget += Economy.cardSellPrice(c);
+        for (Card c : cards.getActiveCards()) budget += cardRefund(c);
         return maxAffordableMaterial(budget) >= needed;
     }
 
@@ -207,11 +312,11 @@ public class ShopManager {
         for (int q = 0; q <= room; q++) {
             for (int r = 0; q + r <= room; r++) {
                 for (int m = 0; q + r + m <= room; m++) { // knights/bishops
-                    int cost = q * 45 + r * 25 + m * 15;
+                    int cost = q * piecePrice("Queen") + r * piecePrice("Rook") + m * piecePrice("Knight");
                     if (cost > budget) break;
                     int cap = Economy.pawnCap(minors + r + m, queens + q);
                     int extraPawns = Math.max(0, Math.min(cap, Economy.MAX_PAWNS) - pawns);
-                    extraPawns = Math.min(extraPawns, (budget - cost) / Economy.piecePrice("Pawn"));
+                    extraPawns = Math.min(extraPawns, (budget - cost) / piecePrice("Pawn"));
                     best = Math.max(best, q * 9 + r * 5 + m * 3 + extraPawns);
                 }
             }

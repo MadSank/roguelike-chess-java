@@ -93,6 +93,22 @@ neon, flying traffic) and asked for:
 
 ## Status
 (newest first)
+- 2026-11-13 (candle, counter, theft): rules from the user.
+  * Cards are played by burning them: a candle stands beside the board (`PixelGame.candle`, `CANDLE_X`).
+    Click a card in the hand to pick it up (it follows the mouse), click the candle to burn it (1.3 s:
+    eaten from the bottom up, ash and smoke, "burn" sound); its effect happens when it's gone. Clicking
+    anywhere else puts it back.
+  * The shop is a physical counter: pieces on felt mats and cards lying face up, with paper price tags.
+    Buying: your hand comes up, sets coins down, takes the item; the dealer's glove sweeps the coins
+    (`Deal`, `drawDeal`, `hand()`). Selling to the reseller is the reverse.
+  * Stealing (ShopManager, tested in `TestTheft`): offered only on a piece or face-up card you can't
+    afford ("STEAL IT / PUT BACK"); caught with chance 15% + 20 points per theft, cooling 10 points (half
+    a theft) per visit, capped at 85%. Caught: his glove slams your hand down, he shouts THIEF to the
+    room; all dealers refuse you for the rest of that visit and the next (`isEmbargoed`), then prices
+    are 1.5x and refunds 0.75x for 3 visits (`hasMarkup`). While embargoed you may sit down under the
+    requirement ("the guards drag you to the table"), so getting caught can't soft-lock a run.
+    `RunController.finishRound` calls `shop.startVisit()` before the game-over check.
+  Sounds: burn, slam, coins, grab. Not click-tested by the user yet.
 - 2026-11-13 (rain scene): from a One Piece reference the user gave (a man crying in the rain, failing to
   light a cigarette) we kept the moment, not the character (no copying the anime design). Beats 0-16, wide
   view: hard rain; flicks miss (2, 2.9), catch (3.7), one breath, the rain hisses it out (5); two weak wet

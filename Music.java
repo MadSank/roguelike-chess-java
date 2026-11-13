@@ -730,6 +730,49 @@ public final class Music {
                 }
                 break;
             }
+            case "burn": {                                                  // a card catching in a candle flame and burning away
+                n = (int) (RATE * 1.4);
+                for (int i = 0; i < n; i++) {
+                    double t = (double) i / RATE, noise = r.nextDouble() * 2 - 1;
+                    double whoosh = f.low(noise, 700 + 900 * Math.min(1, t / 0.15)) * Math.min(1, t / 0.05) * Math.exp(-t / 0.5) * 0.6;
+                    double env = Math.sin(Math.PI * Math.min(1, t / 1.3));
+                    double crackle = r.nextDouble() < 0.012 * env ? (r.nextDouble() * 2 - 1) * 2 : 0;
+                    b[i] = (float) ((whoosh + f2.band(crackle, 4200, 0.6) * 0.6) * 0.7);
+                }
+                break;
+            }
+            case "slam": {                                                  // a fist on the counter: wood, a thud, pieces jumping
+                n = (int) (RATE * 0.9);
+                double[] at = {0.05, 0.09, 0.14, 0.2, 0.27};
+                for (int i = 0; i < n; i++) {
+                    double t = (double) i / RATE, noise = r.nextDouble() * 2 - 1;
+                    double x = Math.sin(2 * Math.PI * 58 * t) * Math.exp(-t / 0.2) * 0.9 + f.band(noise, 420, 0.5) * Math.exp(-t / 0.05) * 1.6;
+                    for (double a : at) if (t >= a) x += f2.band(noise, 2400, 0.4) * Math.exp(-(t - a) / 0.012) * 0.6;
+                    b[i] = (float) (x * 0.6);
+                }
+                break;
+            }
+            case "coins": {                                                 // coins set down on wood
+                n = (int) (RATE * 0.5);
+                double[] at = {0, 0.07, 0.15, 0.21};
+                for (int i = 0; i < n; i++) {
+                    double t = (double) i / RATE, x = 0;
+                    for (int k = 0; k < at.length; k++) if (t >= at[k]) {
+                        double u = t - at[k];
+                        x += (Math.sin(2 * Math.PI * (3200 + k * 170) * u) + 0.6 * Math.sin(2 * Math.PI * (4900 + k * 230) * u)) * Math.exp(-u / 0.05);
+                    }
+                    b[i] = (float) (x * 0.09);
+                }
+                break;
+            }
+            case "grab": {                                                  // fingers closing on something, a slide on wood
+                n = (int) (RATE * 0.16);
+                for (int i = 0; i < n; i++) {
+                    double t = (double) i / RATE;
+                    b[i] = (float) (f.band(r.nextDouble() * 2 - 1, 1500, 0.6) * Math.sin(Math.PI * t / 0.16) * 0.35);
+                }
+                break;
+            }
             case "sob": {                                                   // a breath that catches and shakes: crying, held in
                 n = (int) (RATE * 0.55);
                 for (int i = 0; i < n; i++) {
@@ -1175,7 +1218,7 @@ public final class Music {
             write(new java.io.File(dir, s.name + ".wav"), all);
             System.out.println(s.name + ": " + String.format("%.1f", all.length / (double) RATE) + " s, rendered in " + (System.currentTimeMillis() - t0) + " ms");
         }
-        for (String e : new String[]{"flick", "catch", "clack", "drag", "exhale", "sizzle", "grind", "sob", "swish", "latch", "door", "shut", "move", "capture", "check", "coin", "deny", "card", "step1", "step2", "step3", "drip", "creak", "chair", "hiss", "crack", "sparks"}) write(new java.io.File(dir, "sfx_" + e + ".wav"), makeSfx(e));
+        for (String e : new String[]{"flick", "catch", "clack", "drag", "exhale", "sizzle", "grind", "sob", "swish", "burn", "slam", "coins", "grab", "latch", "door", "shut", "move", "capture", "check", "coin", "deny", "card", "step1", "step2", "step3", "drip", "creak", "chair", "hiss", "crack", "sparks"}) write(new java.io.File(dir, "sfx_" + e + ".wav"), makeSfx(e));
     }
 
     private static void write(java.io.File f, float[] x) throws Exception {
